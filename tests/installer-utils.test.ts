@@ -2,6 +2,13 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { join } from "path";
 import { existsSync, readFileSync, mkdirSync, writeFileSync, rmSync } from "fs";
 import { tmpdir } from "os";
+import {
+  hermesPythonPath,
+  pathListSeparator,
+  ensureOpenChronicleMcpConfig,
+  setMemoryProviderInConfig,
+  OPENCHRONICLE_DEFAULT_MCP_URL,
+} from "../src/main/installer";
 
 // We test the extracted pure functions by importing them.
 // Some functions depend on HERMES_HOME — we mock the module-level constants.
@@ -14,6 +21,27 @@ beforeEach(() => {
 
 afterEach(() => {
   rmSync(TEST_DIR, { recursive: true, force: true });
+});
+
+// ─── Platform runtime helpers ──────────────────────────
+
+describe("Platform runtime helpers", () => {
+  it("uses Windows virtualenv python path on win32", () => {
+    expect(hermesPythonPath("win32")).toMatch(
+      /venv[\\/]Scripts[\\/]python\.exe$/,
+    );
+  });
+
+  it("uses Unix virtualenv python path off Windows", () => {
+    expect(hermesPythonPath("darwin")).toMatch(/venv[\\/]bin[\\/]python$/);
+    expect(hermesPythonPath("linux")).toMatch(/venv[\\/]bin[\\/]python$/);
+  });
+
+  it("uses platform-specific PATH separators", () => {
+    expect(pathListSeparator("win32")).toBe(";");
+    expect(pathListSeparator("darwin")).toBe(":");
+    expect(pathListSeparator("linux")).toBe(":");
+  });
 });
 
 // ─── readLogs (test the logic, not the import) ─────────
@@ -69,7 +97,8 @@ describe("MCP server YAML parsing", () => {
       const serverBlock = block.slice(start, next ? next.index : undefined);
       const hasUrl = /url:/.test(serverBlock);
       const enabledMatch = serverBlock.match(/enabled:\s*(true|false)/i);
-      const enabled = enabledMatch === null || enabledMatch[1].toLowerCase() === "true";
+      const enabled =
+        enabledMatch === null || enabledMatch[1].toLowerCase() === "true";
       servers.push({ name, type: hasUrl ? "http" : "stdio", enabled });
     }
     return servers;
@@ -83,7 +112,11 @@ describe("MCP server YAML parsing", () => {
 `;
     const servers = parseMcpBlock(yaml);
     expect(servers).toHaveLength(1);
-    expect(servers[0]).toEqual({ name: "github", type: "stdio", enabled: true });
+    expect(servers[0]).toEqual({
+      name: "github",
+      type: "stdio",
+      enabled: true,
+    });
   });
 
   it("parses HTTP MCP servers", () => {
@@ -134,6 +167,50 @@ describe("MCP server YAML parsing", () => {
   });
 });
 
+describe("OpenChronicle MCP config", () => {
+  it("adds an OpenChronicle streamable HTTP MCP server when missing", () => {
+    const input = `model:\n  provider: custom\n`;
+    const output = ensureOpenChronicleMcpConfig(
+      input,
+      OPENCHRONICLE_DEFAULT_MCP_URL,
+    );
+
+    expect(output).toContain("mcp_servers:");
+    expect(output).toContain("openchronicle:");
+    expect(output).toContain(`url: "${OPENCHRONICLE_DEFAULT_MCP_URL}"`);
+    expect(output).toContain('transport: "streamable-http"');
+    expect(output).toContain("enabled: true");
+  });
+
+  it("updates an existing OpenChronicle MCP URL", () => {
+    const input = `mcp_servers:\n  openchronicle:\n    type: http\n    url: \"http://old.example/mcp\"\n    transport: \"streamable-http\"\n    enabled: true\n`;
+    const output = ensureOpenChronicleMcpConfig(
+      input,
+      "http://127.0.0.1:9999/mcp",
+    );
+
+    expect(output).toContain('url: "http://127.0.0.1:9999/mcp"');
+    expect(output).not.toContain("http://old.example/mcp");
+  });
+
+  it("sets a nested memory provider when memory config exists", () => {
+    const input = `memory:\n  memory_enabled: true\n  provider: honcho\n  nudge_interval: 10\n`;
+    const output = setMemoryProviderInConfig(input, "openchronicle");
+
+    expect(output).toContain("memory:");
+    expect(output).toContain("  provider: openchronicle");
+    expect(output).not.toContain("provider: honcho");
+  });
+
+  it("creates memory config when missing", () => {
+    const input = `model:\n  provider: custom\n`;
+    const output = setMemoryProviderInConfig(input, "openchronicle");
+
+    expect(output).toContain("memory:");
+    expect(output).toContain("  provider: openchronicle");
+  });
+});
+
 // ─── Memory provider discovery logic ────────────────────
 
 describe("Memory provider discovery", () => {
@@ -167,6 +244,20 @@ describe("Memory provider discovery", () => {
       "mem0",
     ]);
     expect(providers.every((p: any) => p.installed)).toBe(true);
+  });
+
+  it("knows OpenChronicle provider metadata", () => {
+    const known = {
+      openchronicle: {
+        description: "memory.providers.openchronicle",
+        envVars: ["OPENCHRONICLE_MCP_URL"],
+      },
+    };
+
+    expect(known.openchronicle.description).toBe(
+      "memory.providers.openchronicle",
+    );
+    expect(known.openchronicle.envVars).toEqual(["OPENCHRONICLE_MCP_URL"]);
   });
 
   it("reads active provider from config.yaml", () => {
@@ -206,11 +297,7 @@ describe("Memory provider discovery", () => {
 describe("Backward compatibility", () => {
   it("getEnhancedPath logic includes standard paths", () => {
     // Simulate getEnhancedPath extra paths
-    const extra = [
-      "/usr/local/bin",
-      "/opt/homebrew/bin",
-      "/opt/homebrew/sbin",
-    ];
+    const extra = ["/usr/local/bin", "/opt/homebrew/bin", "/opt/homebrew/sbin"];
     const result = [...extra, process.env.PATH || ""].join(":");
     expect(result).toContain("/usr/local/bin");
     expect(result).toContain("/opt/homebrew/bin");

@@ -65,6 +65,7 @@ describe("New IPC handlers from v0.8/v0.9 features", () => {
     "run-hermes-dump",
     "list-mcp-servers",
     "discover-memory-providers",
+    "configure-memory-provider",
   ];
 
   for (const ch of newChannels) {
