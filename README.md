@@ -19,6 +19,19 @@ Hermes Desktop is a native desktop app for installing, configuring, and chatting
 
 Instead of managing the CLI by hand, the app walks through install, provider setup, and day-to-day usage in one place. It uses the official Hermes install script, stores Hermes in `~/.hermes`, and gives you a GUI for chat, sessions, profiles, memory, skills, tools, scheduling, messaging gateways, and more.
 
+## Fork Additions
+
+This fork adds early support for Windows-oriented Hermes Desktop workflows and local memory integrations:
+
+- **Windows runtime helpers** — Hermes Desktop now resolves virtualenv paths as `venv/Scripts/python.exe` on Windows and uses the correct Windows PATH separator.
+- **Windows local model endpoints** — Ollama and Docker Model Runner remain URL-based, so Windows users can point Hermes at OpenAI-compatible local endpoints such as `http://localhost:11434/v1` and `http://localhost:12434/engines/v1`.
+- **OpenChronicle memory provider** — the Memory Providers screen can activate OpenChronicle through its MCP endpoint and writes an `mcp_servers.openchronicle` config entry automatically.
+- **Provider activation IPC** — memory provider activation is now handled through a dedicated desktop API so providers can perform setup work instead of only changing `memory.provider`.
+
+> **Windows status:** Windows packaging is configured and runtime path handling has been added, but native Windows local-agent installation should still be validated on a Windows 11 machine. WSL2 remains the practical fallback for Unix-oriented Hermes Agent tooling.
+>
+> **OpenChronicle status:** OpenChronicle's capture app is currently macOS-only upstream. Hermes Desktop can still connect to any reachable OpenChronicle MCP endpoint, including a remote or shared endpoint.
+
 ## Install
 
 Download the latest build from the [Releases](https://github.com/fathah/hermes-desktop/releases/) page.
@@ -26,6 +39,7 @@ Download the latest build from the [Releases](https://github.com/fathah/hermes-d
 | Platform | File                  |
 | -------- | --------------------- |
 | macOS    | `.dmg`                |
+| Windows  | `.exe` setup          |
 | Linux    | `.AppImage` or `.deb` |
 
 > **macOS users:** The app is not code-signed or notarized. macOS will block it on first launch. To fix this, run the following after installing:
@@ -46,7 +60,7 @@ Download the latest build from the [Releases](https://github.com/fathah/hermes-d
 - **Session management** — full-text search (SQLite FTS5), date-grouped history, resume and search across conversations
 - **Profile switching** — create, delete, and switch between separate Hermes environments with isolated config
 - **14 toolsets** — web, browser, terminal, file, code execution, vision, image gen, TTS, skills, memory, session search, clarify, delegation, MoA, and task planning
-- **Memory system** — view/edit memory entries, user profile memory, capacity tracking, and discoverable memory providers (Honcho, Hindsight, Mem0, RetainDB, Supermemory, ByteRover)
+- **Memory system** — view/edit memory entries, user profile memory, capacity tracking, and discoverable memory providers (Honcho, Hindsight, Mem0, RetainDB, Supermemory, ByteRover, OpenChronicle)
 - **Persona editor** — edit and reset your agent's SOUL.md personality
 - **Saved models** — CRUD management for model configurations across providers
 - **Scheduled tasks** — cron job builder (minutes, hourly, daily, weekly, custom cron) with 15 delivery targets
@@ -89,38 +103,38 @@ Chat requests go through a local API server (`http://127.0.0.1:8642`) with SSE s
 
 ## Screens
 
-| Screen | Description |
-|--------|-------------|
-| **Chat** | Streaming conversation UI with slash commands, tool progress, and token tracking |
-| **Sessions** | Browse, search, and resume past conversations |
-| **Agents** | Create, delete, and switch between Hermes profiles |
-| **Skills** | Browse, install, and manage bundled and installed skills |
-| **Models** | Manage saved model configurations per provider |
-| **Memory** | View/edit memory entries, user profile, and configure memory providers |
-| **Soul** | Edit the active profile's persona (SOUL.md) |
-| **Tools** | Enable or disable individual toolsets |
-| **Schedules** | Create and manage cron jobs with delivery targets |
-| **Gateway** | Configure and control messaging platform integrations |
-| **Office** | Claw3d visual interface setup and management |
-| **Settings** | Provider config, credential pools, backup/import, log viewer, network settings, theme |
+| Screen        | Description                                                                           |
+| ------------- | ------------------------------------------------------------------------------------- |
+| **Chat**      | Streaming conversation UI with slash commands, tool progress, and token tracking      |
+| **Sessions**  | Browse, search, and resume past conversations                                         |
+| **Agents**    | Create, delete, and switch between Hermes profiles                                    |
+| **Skills**    | Browse, install, and manage bundled and installed skills                              |
+| **Models**    | Manage saved model configurations per provider                                        |
+| **Memory**    | View/edit memory entries, user profile, and configure memory providers                |
+| **Soul**      | Edit the active profile's persona (SOUL.md)                                           |
+| **Tools**     | Enable or disable individual toolsets                                                 |
+| **Schedules** | Create and manage cron jobs with delivery targets                                     |
+| **Gateway**   | Configure and control messaging platform integrations                                 |
+| **Office**    | Claw3d visual interface setup and management                                          |
+| **Settings**  | Provider config, credential pools, backup/import, log viewer, network settings, theme |
 
 ## Supported Providers
 
 ### LLM Providers
 
-| Provider | Notes |
-|----------|-------|
-| **OpenRouter** | 200+ models via single API (recommended) |
-| **Anthropic** | Direct Claude access |
-| **OpenAI** | Direct GPT access |
-| **Google (Gemini)** | Google AI Studio |
-| **xAI (Grok)** | Grok models |
-| **Nous Portal** | Free tier available |
-| **Qwen** | QwenAI models |
-| **MiniMax** | Global and China endpoints |
-| **Hugging Face** | 20+ open models via HF Inference |
-| **Groq** | Fast inference (voice/STT) |
-| **Local/Custom** | Any OpenAI-compatible endpoint |
+| Provider            | Notes                                    |
+| ------------------- | ---------------------------------------- |
+| **OpenRouter**      | 200+ models via single API (recommended) |
+| **Anthropic**       | Direct Claude access                     |
+| **OpenAI**          | Direct GPT access                        |
+| **Google (Gemini)** | Google AI Studio                         |
+| **xAI (Grok)**      | Grok models                              |
+| **Nous Portal**     | Free tier available                      |
+| **Qwen**            | QwenAI models                            |
+| **MiniMax**         | Global and China endpoints               |
+| **Hugging Face**    | 20+ open models via HF Inference         |
+| **Groq**            | Fast inference (voice/STT)               |
+| **Local/Custom**    | Any OpenAI-compatible endpoint           |
 
 Local presets are included for LM Studio, Ollama, vLLM, and llama.cpp.
 
@@ -132,12 +146,24 @@ Telegram, Discord, Slack, WhatsApp, Signal, Matrix/Element, Mattermost, Email (I
 
 Exa Search, Parallel API, Tavily, Firecrawl, FAL.ai (image generation), Honcho, Browserbase, Weights & Biases, and Tinker.
 
+### Memory Providers
+
+Hermes Desktop includes built-in editable memory and can discover optional external memory providers from the Hermes Agent memory plugin directory.
+
+This fork also exposes **OpenChronicle** as a memory option. When activated, Hermes Desktop:
+
+1. sets `memory.provider` to `openchronicle`;
+2. ensures `OPENCHRONICLE_MCP_URL` is present, defaulting to `http://127.0.0.1:8742/mcp`;
+3. adds or updates `mcp_servers.openchronicle` as an enabled Streamable HTTP MCP server.
+
+OpenChronicle project: https://github.com/Einsia/OpenChronicle
+
 ## Development
 
 ### Prerequisites
 
 - Node.js and npm
-- A Unix-like shell environment for the Hermes installer
+- A Unix-like shell environment for the Hermes installer, or WSL2 on Windows while native Windows install support is validated
 - Network access for downloading Hermes during first-run install
 
 ### Install dependencies
@@ -179,6 +205,29 @@ npm run build:mac
 npm run build:win
 npm run build:linux
 ```
+
+### Windows Notes
+
+Hermes Desktop can be packaged for Windows with:
+
+```bash
+npm run build:win
+```
+
+Runtime helper code resolves Windows virtualenv Python at:
+
+```text
+~/.hermes/hermes-agent/venv/Scripts/python.exe
+```
+
+Local model services should be exposed through OpenAI-compatible HTTP endpoints. Common defaults:
+
+| Runtime             | Base URL                            |
+| ------------------- | ----------------------------------- |
+| Ollama              | `http://localhost:11434/v1`         |
+| Docker Model Runner | `http://localhost:12434/engines/v1` |
+
+For now, use WSL2 as the fallback path if native Hermes Agent install tooling requires Unix shell behavior.
 
 ## First-Time Setup
 
