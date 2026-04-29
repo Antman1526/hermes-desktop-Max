@@ -32,6 +32,12 @@ This fork adds early support for Windows-oriented Hermes Desktop workflows and l
 >
 > **OpenChronicle status:** OpenChronicle's capture app is currently macOS-only upstream. Hermes Desktop can still connect to any reachable OpenChronicle MCP endpoint, including a remote or shared endpoint.
 
+## Attribution
+
+This repository is a fork of the original [Hermes Desktop](https://github.com/fathah/hermes-desktop) project by [fathah](https://github.com/fathah). The core desktop app, design direction, and Hermes Agent integration work come from the upstream project and its contributors.
+
+This fork builds on that foundation with additional Windows runtime work, local model configuration notes, and OpenChronicle memory-provider integration.
+
 ## Install
 
 Download the latest build from the [Releases](https://github.com/fathah/hermes-desktop/releases/) page.
