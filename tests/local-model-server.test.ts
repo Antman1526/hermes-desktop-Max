@@ -22,6 +22,8 @@ describe("local model server launcher helpers", () => {
       "127.0.0.1",
       "--port",
       "8080",
+      "--alias",
+      "/models/Hermes-3.gguf",
     ]);
   });
 

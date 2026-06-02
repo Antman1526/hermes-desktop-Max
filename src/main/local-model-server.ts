@@ -50,7 +50,16 @@ export function buildLlamaServerArgs(
   modelPath: string,
   port = LOCAL_MODEL_SERVER_PORT,
 ): string[] {
-  return ["--model", modelPath, "--host", "127.0.0.1", "--port", String(port)];
+  return [
+    "--model",
+    modelPath,
+    "--host",
+    "127.0.0.1",
+    "--port",
+    String(port),
+    "--alias",
+    modelPath,
+  ];
 }
 
 export function resolveLlamaServerCommand(
