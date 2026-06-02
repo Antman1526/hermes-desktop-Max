@@ -1,6 +1,7 @@
 import { spawn, execFile, execFileSync } from "child_process";
 import {
   existsSync,
+  mkdirSync,
   readFileSync,
   readdirSync,
   writeFileSync,
@@ -120,6 +121,21 @@ export const HERMES_HOME =
   defaultHermesHome();
 export const HERMES_REPO = join(HERMES_HOME, "hermes-agent");
 export const HERMES_VENV = join(HERMES_REPO, "venv");
+
+export function hermesPythonPath(
+  platform: NodeJS.Platform = process.platform,
+): string {
+  return platform === "win32"
+    ? join(HERMES_VENV, "Scripts", "python.exe")
+    : join(HERMES_VENV, "bin", "python");
+}
+
+export function pathListSeparator(
+  platform: NodeJS.Platform = process.platform,
+): string {
+  return platform === "win32" ? ";" : ":";
+}
+
 // On Windows, use `pythonw.exe` (the GUI-subsystem interpreter that ships in
 // every venv) instead of `python.exe` so that subprocess spawns don't flash
 // a blank console window before `windowsHide: true` / CREATE_NO_WINDOW takes
@@ -160,6 +176,7 @@ export function hermesCliArgs(args: string[] = []): string[] {
   }
   return [HERMES_SCRIPT, ...args];
 }
+export const OPENCHRONICLE_DEFAULT_MCP_URL = "http://127.0.0.1:8742/mcp";
 
 export interface InstallStatus {
   installed: boolean;
@@ -1250,8 +1267,6 @@ export function discoverMemoryProviders(
   profile?: string,
 ): MemoryProviderInfo[] {
   const pluginsDir = join(HERMES_REPO, "plugins", "memory");
-  if (!existsSync(pluginsDir)) return [];
-
   const activeProvider = getActiveMemoryProvider(profile);
 
   // Known providers with their metadata (from plugin.yaml files)
@@ -1295,9 +1310,14 @@ export function discoverMemoryProviders(
       description: "memory.providers.byterover",
       envVars: ["BRV_API_KEY"],
     },
+    openchronicle: {
+      description: "memory.providers.openchronicle",
+      envVars: ["OPENCHRONICLE_MCP_URL"],
+    },
   };
 
   const results: MemoryProviderInfo[] = [];
+  const seen = new Set<string>();
 
   try {
     const dirs = readdirSync(pluginsDir, { withFileTypes: true });
@@ -1315,9 +1335,20 @@ export function discoverMemoryProviders(
         active: name === activeProvider,
         envVars: known?.envVars || [],
       });
+      seen.add(name);
     }
   } catch {
     /* non-fatal */
+  }
+
+  if (!seen.has("openchronicle")) {
+    results.push({
+      name: "openchronicle",
+      description: KNOWN_PROVIDERS.openchronicle.description,
+      installed: true,
+      active: activeProvider === "openchronicle",
+      envVars: KNOWN_PROVIDERS.openchronicle.envVars,
+    });
   }
 
   // Sort: active first, then installed, then alphabetical
@@ -1328,6 +1359,132 @@ export function discoverMemoryProviders(
   });
 
   return results;
+}
+
+function profileConfigDir(profile?: string): string {
+  return profile && profile !== "default"
+    ? join(HERMES_HOME, "profiles", profile)
+    : HERMES_HOME;
+}
+
+function profileConfigPath(profile?: string): string {
+  return join(profileConfigDir(profile), "config.yaml");
+}
+
+function profileEnvPath(profile?: string): string {
+  return join(profileConfigDir(profile), ".env");
+}
+
+export function setMemoryProviderInConfig(
+  content: string,
+  provider: string,
+): string {
+  if (/^memory:\s*$/m.test(content)) {
+    const memoryStart = content.search(/^memory:\s*$/m);
+    const before = content.slice(0, memoryStart);
+    const after = content.slice(memoryStart);
+    if (/^  provider:\s*["']?[\w-]+["']?\s*$/m.test(after)) {
+      return `${before}${after.replace(
+        /^  provider:\s*["']?[\w-]+["']?\s*$/m,
+        `  provider: ${provider}`,
+      )}`;
+    }
+    return `${before}${after.replace(
+      /^memory:\s*$/m,
+      `memory:\n  provider: ${provider}`,
+    )}`;
+  }
+
+  const separator = content.trimEnd() ? "\n\n" : "";
+  return `${content.trimEnd()}${separator}memory:\n  provider: ${provider}\n`;
+}
+
+function ensureEnvValue(key: string, value: string, profile?: string): void {
+  const envPath = profileEnvPath(profile);
+  const dir = profileConfigDir(profile);
+  if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+  if (!existsSync(envPath)) {
+    writeFileSync(envPath, `${key}=${value}\n`, "utf-8");
+    return;
+  }
+
+  const content = readFileSync(envPath, "utf-8");
+  const lines = content.split("\n");
+  const existing = lines.findIndex((line) => line.trim().startsWith(`${key}=`));
+  if (existing >= 0) {
+    const current = lines[existing].split("=").slice(1).join("=").trim();
+    if (current) return;
+    lines[existing] = `${key}=${value}`;
+  } else {
+    lines.push(`${key}=${value}`);
+  }
+  writeFileSync(envPath, lines.join("\n"), "utf-8");
+}
+
+function readEnvValue(key: string, profile?: string): string {
+  const envPath = profileEnvPath(profile);
+  if (!existsSync(envPath)) return "";
+  try {
+    const line = readFileSync(envPath, "utf-8")
+      .split("\n")
+      .find((entry) => entry.trim().startsWith(`${key}=`));
+    return line ? line.split("=").slice(1).join("=").trim() : "";
+  } catch {
+    return "";
+  }
+}
+
+export function ensureOpenChronicleMcpConfig(
+  content: string,
+  url: string,
+): string {
+  const serverBlock = [
+    "  openchronicle:",
+    '    type: "http"',
+    `    url: "${url}"`,
+    '    transport: "streamable-http"',
+    "    enabled: true",
+  ].join("\n");
+
+  if (!/^mcp_servers:\s*$/m.test(content)) {
+    const separator = content.trimEnd() ? "\n\n" : "";
+    return `${content.trimEnd()}${separator}mcp_servers:\n${serverBlock}\n`;
+  }
+
+  const openChronicleRe = /^  openchronicle:\s*\n(?: {4}.+\n?)*/m;
+  if (openChronicleRe.test(content)) {
+    return content.replace(openChronicleRe, `${serverBlock}\n`);
+  }
+
+  return content.replace(/^mcp_servers:\s*$/m, `mcp_servers:\n${serverBlock}`);
+}
+
+export function configureMemoryProvider(
+  provider: string,
+  profile?: string,
+): { success: boolean; error?: string } {
+  try {
+    const configPath = profileConfigPath(profile);
+    const dir = profileConfigDir(profile);
+    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+    const existing = existsSync(configPath)
+      ? readFileSync(configPath, "utf-8")
+      : "";
+    let next = setMemoryProviderInConfig(existing, provider);
+
+    if (provider === "openchronicle") {
+      const url =
+        readEnvValue("OPENCHRONICLE_MCP_URL", profile) ||
+        OPENCHRONICLE_DEFAULT_MCP_URL;
+      ensureEnvValue("OPENCHRONICLE_MCP_URL", url, profile);
+      next = ensureOpenChronicleMcpConfig(next, url);
+    }
+
+    writeFileSync(configPath, next, "utf-8");
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: (err as Error).message };
+  }
 }
 
 /**

@@ -14,11 +14,21 @@ interface UseModelConfigResult {
     provider: string,
     model: string,
     baseUrl: string,
+    options?: { launchable?: boolean; modelPath?: string },
   ) => Promise<void>;
 }
 
 function groupModelsByProvider(
-  models: { provider: string; model: string; name: string; baseUrl?: string }[],
+  models: {
+    provider: string;
+    model: string;
+    name: string;
+    baseUrl?: string;
+    source?: "default" | "custom-provider" | "local-file";
+    modelPath?: string;
+    modelFormat?: "gguf" | "safetensors";
+    launchable?: boolean;
+  }[],
 ): ModelGroup[] {
   const groupMap = new Map<string, ModelGroup>();
   for (const m of models) {
@@ -34,6 +44,10 @@ function groupModelsByProvider(
       model: m.model,
       label: m.name,
       baseUrl: m.baseUrl || "",
+      source: m.source,
+      modelPath: m.modelPath,
+      modelFormat: m.modelFormat,
+      launchable: m.launchable,
     });
   }
   return Array.from(groupMap.values());
@@ -64,7 +78,12 @@ export function useModelConfig(profile?: string): UseModelConfigResult {
   }, [reload]);
 
   const selectModel = useCallback(
-    async (provider: string, model: string, baseUrl: string): Promise<void> => {
+    async (
+      provider: string,
+      model: string,
+      baseUrl: string,
+      options?: { launchable?: boolean; modelPath?: string },
+    ): Promise<void> => {
       // Named providers (deepseek, groq, anthropic, …) have a hardcoded
       // canonical base_url in `hermes-agent`'s PROVIDER_REGISTRY.  A stored
       // model entry that carries a stale `baseUrl` from an earlier confused
@@ -73,6 +92,12 @@ export function useModelConfig(profile?: string): UseModelConfigResult {
       // baseUrl whenever the entry isn't `custom`; the gateway falls back
       // to the provider's canonical URL.
       const effectiveBaseUrl = provider === "custom" ? baseUrl : "";
+      if (options?.launchable && options.modelPath) {
+        const status = await window.hermesAPI.startLocalModelServer(
+          options.modelPath,
+        );
+        if (status.error) throw new Error(status.error);
+      }
       await window.hermesAPI.setModelConfig(
         provider,
         model,

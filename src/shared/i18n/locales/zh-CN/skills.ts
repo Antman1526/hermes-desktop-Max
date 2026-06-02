@@ -14,6 +14,8 @@ export default {
   noBrowseResults: "未找到技能",
   noBrowseResultsHint: "试试其他搜索词或分类筛选",
   installFailed: "安装技能失败",
+  importSkills: "导入技能",
+  importFailed: "导入技能失败",
   uninstallFailed: "卸载技能失败",
   removing: "移除中...",
   uninstall: "卸载",

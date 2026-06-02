@@ -541,6 +541,8 @@ const hermesAPI = {
     profile?: string,
   ): Promise<{ success: boolean; error?: string }> =>
     ipcRenderer.invoke("install-skill", identifier, profile),
+  selectSkillImportSource: (): Promise<string | null> =>
+    ipcRenderer.invoke("select-skill-import-source"),
   uninstallSkill: (
     name: string,
     profile?: string,
@@ -634,6 +636,10 @@ const hermesAPI = {
       provider: string;
       model: string;
       baseUrl: string;
+      source?: "default" | "custom-provider" | "local-file";
+      modelPath?: string;
+      modelFormat?: "gguf" | "safetensors";
+      launchable?: boolean;
       createdAt: number;
     }>
   > => ipcRenderer.invoke("list-models"),
@@ -657,6 +663,33 @@ const hermesAPI = {
 
   updateModel: (id: string, fields: Record<string, string>): Promise<boolean> =>
     ipcRenderer.invoke("update-model", id, fields),
+
+  getLocalModelServerStatus: (): Promise<{
+    running: boolean;
+    managed: boolean;
+    launcherAvailable: boolean;
+    launcherPath: string | null;
+    modelPath: string | null;
+    baseUrl: string;
+    pid: number | null;
+    error?: string;
+  }> => ipcRenderer.invoke("local-model-server-status"),
+
+  startLocalModelServer: (
+    modelPath: string,
+  ): Promise<{
+    running: boolean;
+    managed: boolean;
+    launcherAvailable: boolean;
+    launcherPath: string | null;
+    modelPath: string | null;
+    baseUrl: string;
+    pid: number | null;
+    error?: string;
+  }> => ipcRenderer.invoke("start-local-model-server", modelPath),
+
+  stopLocalModelServer: (): Promise<boolean> =>
+    ipcRenderer.invoke("stop-local-model-server"),
 
   // Claw3D
   claw3dStatus: (): Promise<{
@@ -924,6 +957,35 @@ const hermesAPI = {
   openExternal: (url: string): Promise<void> =>
     ipcRenderer.invoke("open-external", url),
 
+  // Paperclip sidecar
+  getPaperclipConfig: (): Promise<{
+    serverUrl: string;
+    telemetryDisabled: boolean;
+  }> => ipcRenderer.invoke("get-paperclip-config"),
+
+  setPaperclipConfig: (config: {
+    serverUrl?: string;
+    telemetryDisabled?: boolean;
+  }): Promise<{ serverUrl: string; telemetryDisabled: boolean }> =>
+    ipcRenderer.invoke("set-paperclip-config", config),
+
+  paperclipStatus: (): Promise<{
+    serverUrl: string;
+    running: boolean;
+    managed: boolean;
+    launcherAvailable: boolean;
+    launcherDetail: string | null;
+    health: "ok" | "unreachable";
+  }> => ipcRenderer.invoke("paperclip-status"),
+
+  startPaperclip: (): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke("start-paperclip"),
+
+  stopPaperclip: (): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke("stop-paperclip"),
+
+  openPaperclip: (): Promise<void> => ipcRenderer.invoke("open-paperclip"),
+
   // Backup / Import
   runHermesBackup: (
     profile?: string,
@@ -951,6 +1013,12 @@ const hermesAPI = {
       envVars: string[];
     }>
   > => ipcRenderer.invoke("discover-memory-providers", profile),
+
+  configureMemoryProvider: (
+    provider: string,
+    profile?: string,
+  ): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke("configure-memory-provider", provider, profile),
 
   // MCP servers
   listMcpServers: (

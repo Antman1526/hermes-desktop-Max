@@ -15,6 +15,8 @@ export default {
   noBrowseResults: "No skills found",
   noBrowseResultsHint: "Try a different search term or category filter",
   installFailed: "Failed to install skill",
+  importSkills: "Import Skills",
+  importFailed: "Failed to import skill",
   uninstallFailed: "Failed to uninstall skill",
   removing: "Removing...",
   uninstall: "Uninstall",

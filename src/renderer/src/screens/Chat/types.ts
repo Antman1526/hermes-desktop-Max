@@ -63,6 +63,10 @@ export interface ModelGroup {
     model: string;
     label: string;
     baseUrl: string;
+    source?: "default" | "custom-provider" | "local-file";
+    modelPath?: string;
+    modelFormat?: "gguf" | "safetensors";
+    launchable?: boolean;
   }[];
 }
 

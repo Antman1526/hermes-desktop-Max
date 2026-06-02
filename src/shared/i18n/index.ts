@@ -17,6 +17,7 @@ import sessionsEn from "./locales/en/sessions";
 import modelsEn from "./locales/en/models";
 import providersEn from "./locales/en/providers";
 import officeEn from "./locales/en/office";
+import paperclipEn from "./locales/en/paperclip";
 import errorsEn from "./locales/en/errors";
 import schedulesEn from "./locales/en/schedules";
 import skillsEn from "./locales/en/skills";
@@ -78,6 +79,7 @@ import sessionsZh from "./locales/zh-CN/sessions";
 import modelsZh from "./locales/zh-CN/models";
 import providersZh from "./locales/zh-CN/providers";
 import officeZh from "./locales/zh-CN/office";
+import paperclipZh from "./locales/zh-CN/paperclip";
 import errorsZh from "./locales/zh-CN/errors";
 import schedulesZh from "./locales/zh-CN/schedules";
 import skillsZh from "./locales/zh-CN/skills";
@@ -185,6 +187,7 @@ export const resources = {
       models: modelsEn,
       providers: providersEn,
       office: officeEn,
+      paperclip: paperclipEn,
       errors: errorsEn,
       schedules: schedulesEn,
       skills: skillsEn,
@@ -258,6 +261,7 @@ export const resources = {
       models: modelsZh,
       providers: providersZh,
       office: officeZh,
+      paperclip: paperclipZh,
       errors: errorsZh,
       schedules: schedulesZh,
       skills: skillsZh,

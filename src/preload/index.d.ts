@@ -447,6 +447,7 @@ interface HermesAPI {
     identifier: string,
     profile?: string,
   ) => Promise<{ success: boolean; error?: string }>;
+  selectSkillImportSource: () => Promise<string | null>;
   uninstallSkill: (
     name: string,
     profile?: string,
@@ -520,6 +521,10 @@ interface HermesAPI {
       provider: string;
       model: string;
       baseUrl: string;
+      source?: "default" | "custom-provider" | "local-file";
+      modelPath?: string;
+      modelFormat?: "gguf" | "safetensors";
+      launchable?: boolean;
       createdAt: number;
     }>
   >;
@@ -538,6 +543,27 @@ interface HermesAPI {
   }>;
   removeModel: (id: string) => Promise<boolean>;
   updateModel: (id: string, fields: Record<string, string>) => Promise<boolean>;
+  getLocalModelServerStatus: () => Promise<{
+    running: boolean;
+    managed: boolean;
+    launcherAvailable: boolean;
+    launcherPath: string | null;
+    modelPath: string | null;
+    baseUrl: string;
+    pid: number | null;
+    error?: string;
+  }>;
+  startLocalModelServer: (modelPath: string) => Promise<{
+    running: boolean;
+    managed: boolean;
+    launcherAvailable: boolean;
+    launcherPath: string | null;
+    modelPath: string | null;
+    baseUrl: string;
+    pid: number | null;
+    error?: string;
+  }>;
+  stopLocalModelServer: () => Promise<boolean>;
 
   // Claw3D
   claw3dStatus: () => Promise<{
@@ -744,6 +770,27 @@ interface HermesAPI {
   // Shell
   openExternal: (url: string) => Promise<void>;
 
+  // Paperclip sidecar
+  getPaperclipConfig: () => Promise<{
+    serverUrl: string;
+    telemetryDisabled: boolean;
+  }>;
+  setPaperclipConfig: (config: {
+    serverUrl?: string;
+    telemetryDisabled?: boolean;
+  }) => Promise<{ serverUrl: string; telemetryDisabled: boolean }>;
+  paperclipStatus: () => Promise<{
+    serverUrl: string;
+    running: boolean;
+    managed: boolean;
+    launcherAvailable: boolean;
+    launcherDetail: string | null;
+    health: "ok" | "unreachable";
+  }>;
+  startPaperclip: () => Promise<{ success: boolean; error?: string }>;
+  stopPaperclip: () => Promise<{ success: boolean; error?: string }>;
+  openPaperclip: () => Promise<void>;
+
   // Backup / Import
   runHermesBackup: (
     profile?: string,
@@ -766,6 +813,10 @@ interface HermesAPI {
       envVars: string[];
     }>
   >;
+  configureMemoryProvider: (
+    provider: string,
+    profile?: string,
+  ) => Promise<{ success: boolean; error?: string }>;
 
   // MCP servers
   listMcpServers: (

@@ -76,6 +76,21 @@ function Skills({ profile }: SkillsProps): React.JSX.Element {
     }
   }
 
+  async function handleImportSkillSource(): Promise<void> {
+    setError("");
+    const source = await window.hermesAPI.selectSkillImportSource();
+    if (!source) return;
+    setActionInProgress(source);
+    const result = await window.hermesAPI.installSkill(source, profile);
+    setActionInProgress(null);
+    if (result.success) {
+      setTab("installed");
+      await loadInstalled();
+    } else {
+      setError(result.error || t("skills.importFailed"));
+    }
+  }
+
   async function handleUninstall(name: string): Promise<void> {
     setActionInProgress(name);
     setError("");
@@ -187,10 +202,20 @@ function Skills({ profile }: SkillsProps): React.JSX.Element {
           <h2 className="skills-title">{t("skills.title")}</h2>
           <p className="skills-subtitle">{t("skills.subtitle")}</p>
         </div>
-        <button className="btn btn-secondary btn-sm" onClick={loadAll}>
-          <Refresh size={14} />
-          {t("skills.refresh")}
-        </button>
+        <div className="skills-header-actions">
+          <button
+            className="btn btn-secondary btn-sm"
+            onClick={handleImportSkillSource}
+            disabled={Boolean(actionInProgress)}
+          >
+            <Download size={14} />
+            {t("skills.importSkills")}
+          </button>
+          <button className="btn btn-secondary btn-sm" onClick={loadAll}>
+            <Refresh size={14} />
+            {t("skills.refresh")}
+          </button>
+        </div>
       </div>
 
       {error && (

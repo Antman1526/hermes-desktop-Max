@@ -12,6 +12,7 @@ export {
   Layers,
   Monitor,
   Moon,
+  Paperclip as PaperclipIcon,
   Plus,
   Puzzle,
   Search,

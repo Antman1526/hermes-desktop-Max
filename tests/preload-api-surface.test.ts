@@ -94,6 +94,22 @@ describe("New APIs from v0.8/v0.9 features", () => {
     expect(preloadMethods).toContain("configureMemoryProvider");
     expect(typeMethods).toContain("configureMemoryProvider");
   });
+
+  it("has Paperclip sidecar APIs", () => {
+    const methods = [
+      "getPaperclipConfig",
+      "setPaperclipConfig",
+      "paperclipStatus",
+      "startPaperclip",
+      "stopPaperclip",
+      "openPaperclip",
+    ];
+
+    for (const method of methods) {
+      expect(preloadMethods).toContain(method);
+      expect(typeMethods).toContain(method);
+    }
+  });
 });
 
 // ─── Legacy APIs still present ──────────────────────────
@@ -158,12 +174,16 @@ describe("Legacy APIs preserved (backward compat)", () => {
     "listBundledSkills",
     "getSkillContent",
     "installSkill",
+    "selectSkillImportSource",
     "uninstallSkill",
     // Models
     "listModels",
     "addModel",
     "removeModel",
     "updateModel",
+    "getLocalModelServerStatus",
+    "startLocalModelServer",
+    "stopLocalModelServer",
     // Credential pool
     "getCredentialPool",
     "setCredentialPool",

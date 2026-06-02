@@ -123,6 +123,7 @@ sudo dnf install ./hermes-desktop-<version>.rpm
 - **Scheduled tasks** — cron job builder (minutes, hourly, daily, weekly, custom cron) with 15 delivery targets
 - **16 messaging gateways** — Telegram, Discord, Slack, WhatsApp, Signal, Matrix, Mattermost, Email (IMAP/SMTP), SMS (Twilio/Vonage), iMessage (BlueBubbles), DingTalk, Feishu/Lark, WeCom, WeChat (iLink Bot), Webhooks, Home Assistant
 - **Hermes Office (Claw3d)** — visual 3D interface with dev server and adapter management
+- **Paperclip sidecar** — start, stop, configure, and open a local Paperclip control-plane server for Hermes-managed agent companies
 - **Backup, import & debug dump** — full data backup/restore and system diagnostics from Settings
 - **Log viewer** — view gateway and agent logs directly from the Settings screen
 - **Auto-updater** — check for and install updates via electron-updater
@@ -157,6 +158,7 @@ In local mode, chat requests go through `http://127.0.0.1:8642` with SSE streami
 | **Schedules** | Create and manage cron jobs with delivery targets                                     |
 | **Gateway**   | Configure and control messaging platform integrations                                 |
 | **Office**    | Claw3d visual interface setup and management                                          |
+| **Paperclip** | Manage a sidecar Paperclip server and open its dashboard                              |
 | **Settings**  | Provider config, credential pools, backup/import, log viewer, network settings, theme |
 
 ## Supported Providers
@@ -178,6 +180,15 @@ In local mode, chat requests go through `http://127.0.0.1:8642` with SSE streami
 | **Local/Custom**    | Any OpenAI-compatible endpoint           |
 
 Local presets are included for LM Studio, Atomic Chat, Ollama, vLLM, and llama.cpp.
+
+### Local Model Files
+
+This fork scans these local model folders and adds discovered `.gguf` and `.safetensors` files to the saved model library:
+
+- `/Volumes/MainStore/Development/AI_Models`
+- `/Users/Antman/Desktop/AI_Models`
+
+Discovered entries are saved as **Local / Custom** models with the model field set to the local file path and the default base URL set to `http://localhost:8080/v1`. Start a compatible local runtime, such as llama.cpp, with the model file you want to use before selecting the entry in Chat.
 
 ### Messaging Platforms
 

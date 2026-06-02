@@ -3,6 +3,7 @@ export default {
   sessions: "Sessions",
   agents: "Profiles",
   office: "Office",
+  paperclip: "Paperclip",
   models: "Models",
   providers: "Providers",
   skills: "Skills",

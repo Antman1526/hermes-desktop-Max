@@ -4,6 +4,10 @@ import { randomUUID } from "crypto";
 import { HERMES_HOME } from "./installer";
 import { safeWriteFile, profilePaths } from "./utils";
 import DEFAULT_MODELS from "./default-models";
+import {
+  buildLocalModelEntries,
+  discoverLocalModelFiles,
+} from "./local-model-files";
 
 const MODELS_FILE = join(HERMES_HOME, "models.json");
 
@@ -14,6 +18,10 @@ export interface SavedModel {
   model: string;
   baseUrl: string;
   apiMode?: string | null;
+  source?: "default" | "custom-provider" | "local-file";
+  modelPath?: string;
+  modelFormat?: "gguf" | "safetensors";
+  launchable?: boolean;
   createdAt: number;
 }
 
@@ -107,6 +115,7 @@ function seedDefaults(profile?: string): SavedModel[] {
         model: cp.model,
         baseUrl: cp.baseUrl,
         apiMode: cp.apiMode || null,
+        source: "custom-provider",
         createdAt: Date.now(),
       });
       if (cp.apiKey) {
@@ -135,6 +144,7 @@ function seedDefaults(profile?: string): SavedModel[] {
   } catch (e) {
     console.error("Failed to load custom providers:", e);
   }
+  models.push(...buildLocalModelEntries(discoverLocalModelFiles()));
   writeModels(models);
   return models;
 }
@@ -143,7 +153,16 @@ export function listModels(): SavedModel[] {
   if (!existsSync(MODELS_FILE)) {
     return seedDefaults();
   }
-  return readModels();
+  const models = readModels();
+  const localEntries = buildLocalModelEntries(discoverLocalModelFiles());
+  const existingKeys = new Set(models.map((m) => `${m.provider}:${m.model}`));
+  const missing = localEntries.filter(
+    (m) => !existingKeys.has(`${m.provider}:${m.model}`),
+  );
+  if (missing.length === 0) return models;
+  const next = [...models, ...missing];
+  writeModels(next);
+  return next;
 }
 
 export function addModel(

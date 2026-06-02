@@ -30,7 +30,7 @@ interface HermesAPI {
   runHermesUpdate: () => Promise<{ success: boolean; error?: string }>;
 
   // OpenClaw migration
-  checkOpenClaw: () => Promise<{ found: boolean; path: string | null }>; 
+  checkOpenClaw: () => Promise<{ found: boolean; path: string | null }>;
   runClawMigrate: () => Promise<{ success: boolean; error?: string }>;
 
   getLocale: () => Promise<"en" | "zh-CN">;
@@ -210,6 +210,7 @@ interface HermesAPI {
     identifier: string,
     profile?: string,
   ) => Promise<{ success: boolean; error?: string }>;
+  selectSkillImportSource: () => Promise<string | null>;
   uninstallSkill: (
     name: string,
     profile?: string,
@@ -274,6 +275,10 @@ interface HermesAPI {
       provider: string;
       model: string;
       baseUrl: string;
+      source?: "default" | "custom-provider" | "local-file";
+      modelPath?: string;
+      modelFormat?: "gguf" | "safetensors";
+      launchable?: boolean;
       createdAt: number;
     }>
   >;
@@ -292,6 +297,27 @@ interface HermesAPI {
   }>;
   removeModel: (id: string) => Promise<boolean>;
   updateModel: (id: string, fields: Record<string, string>) => Promise<boolean>;
+  getLocalModelServerStatus: () => Promise<{
+    running: boolean;
+    managed: boolean;
+    launcherAvailable: boolean;
+    launcherPath: string | null;
+    modelPath: string | null;
+    baseUrl: string;
+    pid: number | null;
+    error?: string;
+  }>;
+  startLocalModelServer: (modelPath: string) => Promise<{
+    running: boolean;
+    managed: boolean;
+    launcherAvailable: boolean;
+    launcherPath: string | null;
+    modelPath: string | null;
+    baseUrl: string;
+    pid: number | null;
+    error?: string;
+  }>;
+  stopLocalModelServer: () => Promise<boolean>;
 
   // Claw3D
   claw3dStatus: () => Promise<{

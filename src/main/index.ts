@@ -35,6 +35,7 @@ import {
   runHermesDump,
   listMcpServers,
   discoverMemoryProviders,
+  configureMemoryProvider,
   readLogs,
   InstallProgress,
 } from "./installer";
@@ -114,6 +115,11 @@ import {
 } from "./session-cache";
 import { listModels, addModel, removeModel, updateModel } from "./models";
 import {
+  getLocalModelServerStatus,
+  startLocalModelServer,
+  stopLocalModelServer,
+} from "./local-model-server";
+import {
   listProfiles,
   createProfile,
   deleteProfile,
@@ -164,6 +170,13 @@ import {
   listClaw3dHqTasks as kanbanListClaw3dHqTasks,
   CreateTaskInput,
 } from "./kanban";
+import {
+  getPaperclipConfig,
+  getPaperclipStatus,
+  setPaperclipConfig,
+  startPaperclip,
+  stopPaperclip,
+} from "./paperclip";
 import { getAppLocale, setAppLocale } from "./locale";
 import {
   hardenAttachedWebContents,
@@ -1306,6 +1319,13 @@ function setupIPC(): void {
       return updateModel(id, fields);
     },
   );
+  ipcMain.handle("local-model-server-status", () =>
+    getLocalModelServerStatus(),
+  );
+  ipcMain.handle("start-local-model-server", (_event, modelPath: string) =>
+    startLocalModelServer(modelPath),
+  );
+  ipcMain.handle("stop-local-model-server", () => stopLocalModelServer());
 
   // Claw3D
   ipcMain.handle("claw3d-status", () => getClaw3dStatus());
@@ -1454,6 +1474,21 @@ function setupIPC(): void {
     return result.filePaths[0];
   });
 
+  ipcMain.handle("select-skill-import-source", async (event) => {
+    const options = {
+      properties: ["openFile", "openDirectory"] as Array<
+        "openFile" | "openDirectory"
+      >,
+      filters: [{ name: "Skill folders or zip archives", extensions: ["zip"] }],
+    };
+    const win = BrowserWindow.fromWebContents(event.sender);
+    const result = win
+      ? await dialog.showOpenDialog(win, options)
+      : await dialog.showOpenDialog(options);
+    if (result.canceled || result.filePaths.length === 0) return null;
+    return result.filePaths[0];
+  });
+
   // Read directory contents for worktree panel
   ipcMain.handle(
     "read-directory",
@@ -1589,6 +1624,20 @@ function setupIPC(): void {
     openExternalUrl(url);
   });
 
+  // Paperclip sidecar
+  ipcMain.handle("get-paperclip-config", () => getPaperclipConfig());
+  ipcMain.handle(
+    "set-paperclip-config",
+    (_event, config: { serverUrl?: string; telemetryDisabled?: boolean }) =>
+      setPaperclipConfig(config),
+  );
+  ipcMain.handle("paperclip-status", () => getPaperclipStatus());
+  ipcMain.handle("start-paperclip", () => startPaperclip());
+  ipcMain.handle("stop-paperclip", () => stopPaperclip());
+  ipcMain.handle("open-paperclip", () => {
+    openExternalUrl(getPaperclipConfig().serverUrl);
+  });
+
   // Backup / Import
   ipcMain.handle("run-hermes-backup", (_event, profile?: string) =>
     runHermesBackup(profile),
@@ -1618,6 +1667,11 @@ function setupIPC(): void {
       return sshDiscoverMemoryProviders(conn.ssh, profile);
     return discoverMemoryProviders(profile);
   });
+  ipcMain.handle(
+    "configure-memory-provider",
+    (_event, provider: string, profile?: string) =>
+      configureMemoryProvider(provider, profile),
+  );
 
   // Log viewer
   ipcMain.handle("read-logs", (_event, logFile?: string, lines?: number) => {

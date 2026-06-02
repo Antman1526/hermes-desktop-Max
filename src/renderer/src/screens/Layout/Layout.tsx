@@ -13,6 +13,7 @@ import Memory from "../Memory/Memory";
 import Tools from "../Tools/Tools";
 import Gateway from "../Gateway/Gateway";
 import Office from "../Office/Office";
+import Paperclip from "../Paperclip/Paperclip";
 import Models from "../Models/Models";
 import Providers from "../Providers/Providers";
 import Schedules from "../Schedules/Schedules";
@@ -36,6 +37,7 @@ import {
   Timer,
   Kanban as KanbanIcon,
   Download,
+  PaperclipIcon,
 } from "../../assets/icons";
 import type { LucideIcon } from "lucide-react";
 import { useI18n } from "../../components/useI18n";
@@ -45,6 +47,7 @@ type View =
   | "sessions"
   | "agents"
   | "office"
+  | "paperclip"
   | "models"
   | "providers"
   | "skills"
@@ -62,6 +65,7 @@ const NAV_ITEMS: { view: View; icon: LucideIcon; labelKey: string }[] = [
   { view: "agents", icon: Users, labelKey: "navigation.agents" },
   { view: "office", icon: Building, labelKey: "navigation.office" },
   { view: "kanban", icon: KanbanIcon, labelKey: "navigation.kanban" },
+  { view: "paperclip", icon: PaperclipIcon, labelKey: "navigation.paperclip" },
   { view: "models", icon: Layers, labelKey: "navigation.models" },
   { view: "providers", icon: KeyRound, labelKey: "navigation.providers" },
   { view: "skills", icon: Puzzle, labelKey: "navigation.skills" },
@@ -315,6 +319,12 @@ function Layout({
         {visitedViews.has("office") && (
           <div style={paneStyle("office")}>
             <Office profile={activeProfile} visible={view === "office"} />
+          </div>
+        )}
+
+        {visitedViews.has("paperclip") && (
+          <div style={paneStyle("paperclip")}>
+            <Paperclip />
           </div>
         )}
 

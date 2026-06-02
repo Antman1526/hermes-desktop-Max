@@ -10,7 +10,12 @@ interface ModelPickerProps {
   modelGroups: ModelGroup[];
   displayModel: string;
   onOpen: () => void;
-  onSelectModel: (provider: string, model: string, baseUrl: string) => void;
+  onSelectModel: (
+    provider: string,
+    model: string,
+    baseUrl: string,
+    options?: { launchable?: boolean; modelPath?: string },
+  ) => void;
 }
 
 export const ModelPicker = memo(function ModelPicker({
@@ -43,8 +48,13 @@ export const ModelPicker = memo(function ModelPicker({
     setIsOpen((v) => !v);
   }
 
-  function select(provider: string, model: string, baseUrl: string): void {
-    onSelectModel(provider, model, baseUrl);
+  function select(
+    provider: string,
+    model: string,
+    baseUrl: string,
+    options?: { launchable?: boolean; modelPath?: string },
+  ): void {
+    onSelectModel(provider, model, baseUrl, options);
     setIsOpen(false);
     setCustomInput("");
   }
@@ -80,7 +90,12 @@ export const ModelPicker = memo(function ModelPicker({
                   <button
                     key={`${m.provider}:${m.model}`}
                     className={`chat-model-option ${active ? "active" : ""}`}
-                    onClick={() => select(m.provider, m.model, m.baseUrl)}
+                    onClick={() =>
+                      select(m.provider, m.model, m.baseUrl, {
+                        launchable: m.launchable,
+                        modelPath: m.modelPath,
+                      })
+                    }
                   >
                     <span className="chat-model-option-label">{m.label}</span>
                     <span className="chat-model-option-id">{m.model}</span>
