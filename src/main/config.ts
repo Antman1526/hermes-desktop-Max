@@ -650,6 +650,21 @@ function upsertBlockChild(
   return `${content}${sep}${blockName}:\n  ${key}: "${value}"\n`;
 }
 
+function removeBlockChild(
+  content: string,
+  blockName: string,
+  key: string,
+): string {
+  const { children } = readTopLevelBlock(content, blockName);
+  const existing = children.get(key);
+  if (!existing) return content;
+
+  const lineStart = content.lastIndexOf("\n", existing.valueStart) + 1;
+  const nextNewline = content.indexOf("\n", existing.valueEnd);
+  const lineEnd = nextNewline === -1 ? content.length : nextNewline + 1;
+  return content.slice(0, lineStart) + content.slice(lineEnd);
+}
+
 /**
  * Pick a value to write under model.api_key when the user configures a
  * provider="custom" entry pointing at a known commercial host (DeepSeek,
@@ -749,6 +764,8 @@ export function setModelConfig(
   const effectiveBaseUrl = baseUrl || canonicalProviderBaseUrl(provider) || "";
   if (effectiveBaseUrl) {
     content = upsertBlockChild(content, "model", "base_url", effectiveBaseUrl);
+  } else {
+    content = removeBlockChild(content, "model", "base_url");
   }
 
   // Workaround for upstream gateway bug — see pickAutoApiKeyForCustomProvider.
@@ -1248,11 +1265,11 @@ export function buildCredentialPoolEntry(
   const baseUrl = canonicalProviderBaseUrl(provider) || "";
   // Next priority — pool entries are sorted ascending, so a new entry
   // appended at the end gets the highest priority value.
-  const nextPriority =
-    existingEntries.reduce(
-      (max, e) => (typeof e.priority === "number" ? Math.max(max, e.priority + 1) : max),
-      0,
-    );
+  const nextPriority = existingEntries.reduce(
+    (max, e) =>
+      typeof e.priority === "number" ? Math.max(max, e.priority + 1) : max,
+    0,
+  );
   return {
     id: cryptoRandomId(),
     label: label.trim() || `Key ${existingEntries.length + 1}`,

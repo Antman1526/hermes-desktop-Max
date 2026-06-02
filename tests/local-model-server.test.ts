@@ -4,6 +4,7 @@ import {
   isDiscoveredLocalModelPath,
   isLaunchableLocalModel,
   resolveLlamaServerCommand,
+  waitForLocalModelServerReady,
 } from "../src/main/local-model-server";
 
 describe("local model server launcher helpers", () => {
@@ -50,5 +51,37 @@ describe("local model server launcher helpers", () => {
     expect(isDiscoveredLocalModelPath("/other/Unknown.gguf", files)).toBe(
       false,
     );
+  });
+
+  it("waits for the local OpenAI endpoint to become ready before reporting startup success", async () => {
+    let attempts = 0;
+
+    const ready = await waitForLocalModelServerReady({
+      timeoutMs: 100,
+      intervalMs: 1,
+      healthCheck: async () => {
+        attempts++;
+        return attempts === 3;
+      },
+    });
+
+    expect(ready).toBe(true);
+    expect(attempts).toBe(3);
+  });
+
+  it("times out when the local OpenAI endpoint never becomes ready", async () => {
+    let attempts = 0;
+
+    const ready = await waitForLocalModelServerReady({
+      timeoutMs: 5,
+      intervalMs: 1,
+      healthCheck: async () => {
+        attempts++;
+        return false;
+      },
+    });
+
+    expect(ready).toBe(false);
+    expect(attempts).toBeGreaterThanOrEqual(1);
   });
 });

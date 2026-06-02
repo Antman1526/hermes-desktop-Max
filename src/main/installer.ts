@@ -1383,9 +1383,9 @@ export function setMemoryProviderInConfig(
     const memoryStart = content.search(/^memory:\s*$/m);
     const before = content.slice(0, memoryStart);
     const after = content.slice(memoryStart);
-    if (/^  provider:\s*["']?[\w-]+["']?\s*$/m.test(after)) {
+    if (/^ {2}provider:\s*["']?[\w-]+["']?\s*$/m.test(after)) {
       return `${before}${after.replace(
-        /^  provider:\s*["']?[\w-]+["']?\s*$/m,
+        /^ {2}provider:\s*["']?[\w-]+["']?\s*$/m,
         `  provider: ${provider}`,
       )}`;
     }
@@ -1451,7 +1451,7 @@ export function ensureOpenChronicleMcpConfig(
     return `${content.trimEnd()}${separator}mcp_servers:\n${serverBlock}\n`;
   }
 
-  const openChronicleRe = /^  openchronicle:\s*\n(?: {4}.+\n?)*/m;
+  const openChronicleRe = /^ {2}openchronicle:\s*\n(?: {4}.+\n?)*/m;
   if (openChronicleRe.test(content)) {
     return content.replace(openChronicleRe, `${serverBlock}\n`);
   }

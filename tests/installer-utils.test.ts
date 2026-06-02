@@ -205,7 +205,7 @@ describe("OpenChronicle MCP config", () => {
   });
 
   it("updates an existing OpenChronicle MCP URL", () => {
-    const input = `mcp_servers:\n  openchronicle:\n    type: http\n    url: \"http://old.example/mcp\"\n    transport: \"streamable-http\"\n    enabled: true\n`;
+    const input = `mcp_servers:\n  openchronicle:\n    type: http\n    url: "http://old.example/mcp"\n    transport: "streamable-http"\n    enabled: true\n`;
     const output = ensureOpenChronicleMcpConfig(
       input,
       "http://127.0.0.1:9999/mcp",

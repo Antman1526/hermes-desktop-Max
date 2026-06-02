@@ -131,6 +131,32 @@ describe("setModelConfig — base_url substitution", () => {
     expect(content).not.toMatch(/^\s+base_url:/m);
   });
 
+  it("removes a stale base_url when switching to custom without an explicit endpoint", async () => {
+    const configFile = join(TEST_DIR, "config.yaml");
+    writeFileSync(
+      configFile,
+      [
+        "model:",
+        '  provider: "custom"',
+        '  default: "/old/model.gguf"',
+        '  base_url: "http://localhost:8080/v1"',
+        "",
+      ].join("\n"),
+      "utf-8",
+    );
+
+    const { setModelConfig, getModelConfig } =
+      await importConfigWithHome(TEST_DIR);
+
+    setModelConfig("custom", "manual-model-name", "");
+
+    const mc = getModelConfig();
+    expect(mc.provider).toBe("custom");
+    expect(mc.model).toBe("manual-model-name");
+    expect(mc.baseUrl).toBe("");
+    expect(readFileSync(configFile, "utf-8")).not.toMatch(/^\s+base_url:/m);
+  });
+
   it("covers every built-in remote provider — the full coverage check", async () => {
     // If this test starts failing because a built-in remote provider
     // got added to constants.ts:LOCAL_PRESETS without a corresponding

@@ -19,6 +19,8 @@ const LLAMA_SERVER_CANDIDATES = [
   "/opt/homebrew/bin/llama-server",
   "/usr/local/bin/llama-server",
 ];
+const SERVER_START_TIMEOUT_MS = 120_000;
+const SERVER_START_POLL_MS = 500;
 
 let localModelProcess: ChildProcess | null = null;
 
@@ -134,13 +136,30 @@ function serverHealth(): Promise<boolean> {
   });
 }
 
+export async function waitForLocalModelServerReady({
+  timeoutMs = SERVER_START_TIMEOUT_MS,
+  intervalMs = SERVER_START_POLL_MS,
+  healthCheck = serverHealth,
+}: {
+  timeoutMs?: number;
+  intervalMs?: number;
+  healthCheck?: () => Promise<boolean>;
+} = {}): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  do {
+    if (await healthCheck()) return true;
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+  } while (Date.now() < deadline);
+  return healthCheck();
+}
+
 export async function getLocalModelServerStatus(): Promise<LocalModelServerStatus> {
   const launcherPath = resolveLlamaServerCommand();
   const launcherAvailable = commandAvailable(launcherPath);
   const pid = readPid();
   const managed = Boolean(pid && pidIsAlive(pid));
-  const running = managed || (await serverHealth());
-  if (pid && !managed && !(await serverHealth())) clearStateFiles();
+  const running = await serverHealth();
+  if (pid && !managed && !running) clearStateFiles();
 
   return {
     running,
@@ -204,7 +223,15 @@ export async function startLocalModelServer(
     safeWriteFile(MODEL_FILE, modelPath);
   }
 
-  return getLocalModelServerStatus();
+  const ready = await waitForLocalModelServerReady();
+  const next = await getLocalModelServerStatus();
+  return ready
+    ? next
+    : {
+        ...next,
+        error:
+          "llama-server started but did not become ready within 120 seconds.",
+      };
 }
 
 export function stopLocalModelServer(): boolean {

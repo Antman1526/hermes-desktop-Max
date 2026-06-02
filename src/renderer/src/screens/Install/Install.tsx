@@ -94,7 +94,7 @@ function Install({
       isMounted = false;
       cleanup();
     };
-  }, [phase]);
+  }, [phase, t]);
 
   useEffect(() => {
     if (logRef.current) {
