@@ -10,6 +10,25 @@ import {
   OPENCHRONICLE_DEFAULT_MCP_URL,
 } from "../src/main/installer";
 
+// installer.ts transitively imports modules that pull in `electron` at value
+// scope (askpass.ts, sudoCreds.ts). Loading the real package in a plain
+// Node/vitest environment fails ("Electron failed to install correctly"),
+// which breaks every test that dynamically imports the installer module.
+// Provide a minimal stub so the import resolves.
+vi.mock("electron", () => ({
+  BrowserWindow: class {
+    static getAllWindows(): unknown[] {
+      return [];
+    }
+  },
+  ipcMain: {
+    on: (): void => {},
+    handle: (): void => {},
+    removeHandler: (): void => {},
+    removeAllListeners: (): void => {},
+  },
+}));
+
 // We test the extracted pure functions by importing them.
 // Some functions depend on HERMES_HOME — we mock the module-level constants.
 
@@ -65,7 +84,8 @@ describe("readLogs logic", () => {
   it("sanitizes log file names", () => {
     const allowed = ["agent.log", "errors.log", "gateway.log"];
     // Simulating the sanitization logic from readLogs
-    const sanitize = (f: string) => (allowed.includes(f) ? f : "agent.log");
+    const sanitize = (f: string): string =>
+      allowed.includes(f) ? f : "agent.log";
 
     expect(sanitize("agent.log")).toBe("agent.log");
     expect(sanitize("errors.log")).toBe("errors.log");
@@ -80,7 +100,9 @@ describe("readLogs logic", () => {
 
 describe("MCP server YAML parsing", () => {
   // Simulate the regex-based parsing from listMcpServers
-  function parseMcpBlock(content: string) {
+  function parseMcpBlock(
+    content: string,
+  ): Array<{ name: string; type: string; enabled: boolean }> {
     const match = content.match(/^mcp_servers:\s*\n((?:[ \t]+.+\n)*)/m);
     if (!match) return [];
     const block = match[1];
@@ -228,22 +250,28 @@ describe("Memory provider discovery", () => {
     writeFileSync(join(pluginsDir, "holographic", "__init__.py"), "");
 
     // Simulate the scanning logic
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { readdirSync } = require("fs");
     const dirs = readdirSync(pluginsDir, { withFileTypes: true });
     const providers = dirs
-      .filter((d: any) => d.isDirectory() && !d.name.startsWith("_"))
-      .map((d: any) => ({
+      .filter(
+        (d: { isDirectory(): boolean; name: string }) =>
+          d.isDirectory() && !d.name.startsWith("_"),
+      )
+      .map((d: { name: string }) => ({
         name: d.name,
         installed: existsSync(join(pluginsDir, d.name, "__init__.py")),
       }));
 
     expect(providers).toHaveLength(3);
-    expect(providers.map((p: any) => p.name).sort()).toEqual([
+    expect(providers.map((p: { name: string }) => p.name).sort()).toEqual([
       "holographic",
       "honcho",
       "mem0",
     ]);
-    expect(providers.every((p: any) => p.installed)).toBe(true);
+    expect(providers.every((p: { installed: boolean }) => p.installed)).toBe(
+      true,
+    );
   });
 
   it("knows OpenChronicle provider metadata", () => {
@@ -289,6 +317,123 @@ describe("Memory provider discovery", () => {
     const content = readFileSync(configPath, "utf-8");
     const match = content.match(/^\s*provider:\s*["']?(\w+)["']?\s*$/m);
     expect(match).toBeNull();
+  });
+});
+
+// ─── OAuth credential discovery ─────────────────
+//
+// The previous installer-side `hasHermesAuthCredential` accepted a bare
+// `active_provider` and empty `providers: { name: {} }` entries as
+// configured. That looser check could mask onboarding failures where a
+// credential record existed but contained no token. The replacement,
+// `hasOAuthCredentials` (in config.ts, profile-aware), only counts an
+// entry that has at least one of access_token / refresh_token / api_key.
+
+describe("OAuth credential discovery", () => {
+  async function importConfigWithHome(
+    home: string,
+  ): Promise<typeof import("../src/main/config")> {
+    vi.resetModules();
+    process.env.HERMES_HOME = home;
+    return await import("../src/main/config");
+  }
+
+  afterEach(() => {
+    delete process.env.HERMES_HOME;
+    vi.resetModules();
+  });
+
+  it("detects OAuth credentials stored in auth.json credential_pool", async () => {
+    writeFileSync(
+      join(TEST_DIR, "auth.json"),
+      JSON.stringify({
+        credential_pool: {
+          "openai-codex": [{ access_token: "sk-test-token" }],
+        },
+      }),
+    );
+
+    const { hasOAuthCredentials } = await importConfigWithHome(TEST_DIR);
+
+    expect(hasOAuthCredentials("openai-codex")).toBe(true);
+    expect(hasOAuthCredentials("anthropic")).toBe(false);
+  });
+
+  it("requires actual token fields, not just a provider entry", async () => {
+    writeFileSync(
+      join(TEST_DIR, "auth.json"),
+      JSON.stringify({
+        active_provider: "openrouter",
+        providers: {
+          anthropic: {}, // empty — no token, so not "configured"
+          openai: { access_token: "tok-openai" },
+          claude: { refresh_token: "ref-claude" },
+          mistral: { api_key: "key-mistral" },
+        },
+      }),
+    );
+
+    const { hasOAuthCredentials } = await importConfigWithHome(TEST_DIR);
+
+    // Empty providers entries and a bare active_provider no longer count
+    // — the previous behavior reported them as configured even with no
+    // actual credentials, which masked real onboarding errors.
+    expect(hasOAuthCredentials("anthropic")).toBe(false);
+    expect(hasOAuthCredentials("openrouter")).toBe(false);
+    // Any of access_token / refresh_token / api_key qualifies.
+    expect(hasOAuthCredentials("openai")).toBe(true);
+    expect(hasOAuthCredentials("claude")).toBe(true);
+    expect(hasOAuthCredentials("mistral")).toBe(true);
+  });
+
+  it("returns false when auth.json is missing or malformed", async () => {
+    const missing = await importConfigWithHome(TEST_DIR);
+    expect(missing.hasOAuthCredentials("openai-codex")).toBe(false);
+
+    writeFileSync(join(TEST_DIR, "auth.json"), "{not-json");
+    const malformed = await importConfigWithHome(TEST_DIR);
+    expect(malformed.hasOAuthCredentials("openai-codex")).toBe(false);
+  });
+});
+
+// ─── OpenClaw detector ─────────────────────────────────
+
+describe("checkOpenClawExists", () => {
+  it("ignores an empty .openclaw directory (self-created stub)", async () => {
+    // Mirrors the real-world case where hermes-desktop's own Claw3D settings
+    // helper has mkdirSync'd ~/.openclaw/claw3d/ without writing any files.
+    mkdirSync(join(TEST_DIR, ".openclaw", "claw3d"), { recursive: true });
+    const { checkOpenClawExists } = await import("../src/main/installer");
+    expect(checkOpenClawExists(TEST_DIR)).toEqual({ found: false, path: null });
+  });
+
+  it("detects a populated .openclaw directory", async () => {
+    const dir = join(TEST_DIR, ".openclaw");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "openclaw.json"), "{}");
+    const { checkOpenClawExists } = await import("../src/main/installer");
+    expect(checkOpenClawExists(TEST_DIR)).toEqual({ found: true, path: dir });
+  });
+
+  it("detects files nested under subdirectories", async () => {
+    const dir = join(TEST_DIR, ".openclaw");
+    mkdirSync(join(dir, "skills", "my-skill"), { recursive: true });
+    writeFileSync(join(dir, "skills", "my-skill", "SKILL.md"), "hi");
+    const { checkOpenClawExists } = await import("../src/main/installer");
+    expect(checkOpenClawExists(TEST_DIR)).toEqual({ found: true, path: dir });
+  });
+
+  it("returns not-found when no candidate directory exists", async () => {
+    const { checkOpenClawExists } = await import("../src/main/installer");
+    expect(checkOpenClawExists(TEST_DIR)).toEqual({ found: false, path: null });
+  });
+
+  it("falls back to legacy .clawdbot and .moldbot names", async () => {
+    const dir = join(TEST_DIR, ".clawdbot");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "clawdbot.json"), "{}");
+    const { checkOpenClawExists } = await import("../src/main/installer");
+    expect(checkOpenClawExists(TEST_DIR)).toEqual({ found: true, path: dir });
   });
 });
 

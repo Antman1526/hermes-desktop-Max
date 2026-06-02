@@ -15,29 +15,72 @@ export interface SectionDef {
 // ── Providers ───────────────────────────────────────────
 
 export const PROVIDERS = {
+  // Ordered for the Providers / model-picker dropdown.  Each value must
+  // match a provider name `hermes-agent` recognises (see
+  // hermes_cli/auth.py::resolve_provider — _PROVIDER_ALIASES + PROVIDER_REGISTRY)
+  // so the gateway routes correctly when the user picks the entry.  The
+  // catch-all `custom` stays last for unlisted OpenAI-compatible endpoints.
   options: [
     { value: "auto", label: "constants.autoDetect" },
+    // Aggregators
     { value: "openrouter", label: "constants.openrouterName" },
+    // First-party API providers
     { value: "anthropic", label: "constants.anthropicName" },
     { value: "openai", label: "constants.openaiName" },
+    { value: "openai-codex", label: "constants.openaiCodexName" },
     { value: "google", label: "constants.googleName" },
     { value: "xai", label: "constants.xaiName" },
-    { value: "nous", label: "constants.nousName" },
+    { value: "mistral", label: "Mistral" },
+    { value: "deepseek", label: "DeepSeek" },
+    { value: "groq", label: "Groq" },
+    { value: "together", label: "Together AI" },
+    { value: "fireworks", label: "Fireworks AI" },
+    { value: "cerebras", label: "Cerebras" },
+    { value: "perplexity", label: "Perplexity" },
+    { value: "huggingface", label: "Hugging Face" },
+    { value: "nvidia", label: "NVIDIA NIM" },
+    { value: "zai", label: "Z.ai / GLM" },
     { value: "qwen", label: "Qwen" },
     { value: "minimax", label: "MiniMax" },
-    { value: "custom", label: "Local / Custom" },
+    { value: "nous", label: "constants.nousName" },
+    // Subscription / OAuth plans
+    // openai-codex is listed once above (first-party group) via #102 —
+    // not repeated here to avoid a duplicate <option> value.
+    { value: "xai-oauth", label: "xAI Grok (OAuth)" },
+    { value: "qwen-oauth", label: "Qwen (OAuth)" },
+    { value: "google-gemini-cli", label: "Gemini (CLI OAuth)" },
+    { value: "minimax-oauth", label: "MiniMax (OAuth)" },
+    { value: "kimi-coding", label: "Kimi (Coding Plan)" },
+    // Catch-all for any other OpenAI-compatible endpoint or local LLM
+    { value: "custom", label: "constants.customOpenAICompatibleName" },
   ],
 
   labels: {
     openrouter: "constants.openrouterName",
     anthropic: "constants.anthropicName",
     openai: "constants.openaiName",
+    "openai-codex": "constants.openaiCodexName",
     google: "constants.googleName",
     xai: "constants.xaiName",
-    nous: "constants.nousName",
+    mistral: "Mistral",
+    deepseek: "DeepSeek",
+    groq: "Groq",
+    together: "Together AI",
+    fireworks: "Fireworks AI",
+    cerebras: "Cerebras",
+    perplexity: "Perplexity",
+    huggingface: "Hugging Face",
+    nvidia: "NVIDIA NIM",
+    zai: "Z.ai / GLM",
     qwen: "Qwen",
     minimax: "MiniMax",
-    custom: "Custom",
+    nous: "constants.nousName",
+    "xai-oauth": "xAI Grok (OAuth)",
+    "qwen-oauth": "Qwen (OAuth)",
+    "google-gemini-cli": "Gemini (CLI OAuth)",
+    "minimax-oauth": "MiniMax (OAuth)",
+    "kimi-coding": "Kimi (Coding Plan)",
+    custom: "OpenAI Compatible / Local",
   } as Record<string, string>,
 
   setup: [
@@ -73,9 +116,26 @@ export const PROVIDERS = {
       envKey: "OPENAI_API_KEY",
       url: "https://platform.openai.com/api-keys",
       placeholder: "sk-...",
-      configProvider: "openai",
-      baseUrl: "",
+      // Routed through the `custom` provider with an explicit base_url:
+      // hermes-agent's resolve_provider does not recognise a bare `openai`
+      // provider id (issue #294). The `custom` + api.openai.com path is
+      // accepted, and the OpenAI key is picked up via the known-host
+      // base-URL mapping.
+      configProvider: "custom",
+      baseUrl: "https://api.openai.com/v1",
       needsKey: true,
+    },
+    {
+      id: "openai-codex",
+      name: "constants.openaiCodexName",
+      desc: "constants.openaiCodexDesc",
+      tag: "constants.openaiCodexTag",
+      envKey: "",
+      url: "",
+      placeholder: "",
+      configProvider: "openai-codex",
+      baseUrl: "",
+      needsKey: false,
     },
     {
       id: "google",
@@ -120,7 +180,7 @@ export const PROVIDERS = {
       tag: "constants.localTag",
       envKey: "",
       url: "",
-      placeholder: "",
+      placeholder: "sk-...",
       configProvider: "custom",
       baseUrl: "http://localhost:1234/v1",
       needsKey: false,
@@ -128,11 +188,130 @@ export const PROVIDERS = {
   ],
 };
 
-export const LOCAL_PRESETS = [
-  { id: "lmstudio", name: "constants.lmstudio", port: "1234" },
-  { id: "ollama", name: "constants.ollama", port: "11434" },
-  { id: "vllm", name: "constants.vllm", port: "8000" },
-  { id: "llamacpp", name: "constants.llamacpp", port: "8080" },
+// Subscription / OAuth-plan providers — these authenticate through an
+// interactive browser login (`hermes auth add <id> --type oauth`) rather
+// than a static API key. The Providers screen renders a "Sign in" card
+// for each. Values must match hermes-agent's provider registry.
+export interface OAuthProviderDef {
+  id: string;
+  name: string;
+  desc: string;
+}
+
+export const OAUTH_PROVIDERS: OAuthProviderDef[] = [
+  {
+    id: "openai-codex",
+    name: "ChatGPT (Codex Plan)",
+    desc: "providers.oauth.codexDesc",
+  },
+  {
+    id: "xai-oauth",
+    name: "xAI Grok (OAuth)",
+    desc: "providers.oauth.xaiDesc",
+  },
+  { id: "qwen-oauth", name: "Qwen (OAuth)", desc: "providers.oauth.qwenDesc" },
+  {
+    id: "google-gemini-cli",
+    name: "Gemini (CLI OAuth)",
+    desc: "providers.oauth.geminiDesc",
+  },
+  {
+    id: "minimax-oauth",
+    name: "MiniMax (OAuth)",
+    desc: "providers.oauth.minimaxDesc",
+  },
+  // Nous Portal OAuth — issue #367 Bug 2. The engine's
+  // PROVIDER_REGISTRY registers `nous` with auth_type="oauth_device_code";
+  // without this card the only way to trigger the sign-in flow was
+  // `hermes auth add nous --type oauth` from PowerShell.
+  {
+    id: "nous",
+    name: "Nous Portal (OAuth)",
+    desc: "providers.oauth.nousDesc",
+  },
+];
+
+export interface LocalPreset {
+  id: string;
+  name: string;
+  baseUrl: string;
+  group: "local" | "remote";
+  envKey?: string;
+}
+
+export const LOCAL_PRESETS: LocalPreset[] = [
+  {
+    id: "lmstudio",
+    name: "constants.lmstudio",
+    baseUrl: "http://localhost:1234/v1",
+    group: "local",
+  },
+  {
+    id: "atomicchat",
+    name: "constants.atomicchat",
+    baseUrl: "http://localhost:1337/v1",
+    group: "local",
+  },
+  {
+    id: "ollama",
+    name: "constants.ollama",
+    baseUrl: "http://localhost:11434/v1",
+    group: "local",
+  },
+  {
+    id: "vllm",
+    name: "constants.vllm",
+    baseUrl: "http://localhost:8000/v1",
+    group: "local",
+  },
+  {
+    id: "llamacpp",
+    name: "constants.llamacpp",
+    baseUrl: "http://localhost:8080/v1",
+    group: "local",
+  },
+  {
+    id: "groq",
+    name: "constants.groq",
+    baseUrl: "https://api.groq.com/openai/v1",
+    group: "remote",
+    envKey: "GROQ_API_KEY",
+  },
+  {
+    id: "deepseek",
+    name: "constants.deepseek",
+    baseUrl: "https://api.deepseek.com/v1",
+    group: "remote",
+    envKey: "DEEPSEEK_API_KEY",
+  },
+  {
+    id: "together",
+    name: "constants.together",
+    baseUrl: "https://api.together.xyz/v1",
+    group: "remote",
+    envKey: "TOGETHER_API_KEY",
+  },
+  {
+    id: "fireworks",
+    name: "constants.fireworks",
+    baseUrl: "https://api.fireworks.ai/inference/v1",
+    group: "remote",
+    envKey: "FIREWORKS_API_KEY",
+  },
+  {
+    id: "cerebras",
+    name: "constants.cerebras",
+    baseUrl: "https://api.cerebras.ai/v1",
+    group: "remote",
+    envKey: "CEREBRAS_API_KEY",
+  },
+  {
+    id: "mistral",
+    name: "constants.mistral",
+    baseUrl: "https://api.mistral.ai/v1",
+    group: "remote",
+    envKey: "MISTRAL_API_KEY",
+  },
 ];
 
 // ── Theme ───────────────────────────────────────────────
@@ -193,6 +372,15 @@ export const SETTINGS_SECTIONS: SectionDef[] = [
         type: "password",
         hint: "constants.minimaxHint",
       },
+      // Nous Portal API-key variant — the OAuth variant has its own
+      // card in the OAuth section below. Missing-API-key-card was
+      // issue #367 Bug 1.
+      {
+        key: "NOUS_API_KEY",
+        label: "constants.nousApiKey",
+        type: "password",
+        hint: "constants.nousHint",
+      },
       {
         key: "MINIMAX_CN_API_KEY",
         label: "constants.minimaxCnApiKey",
@@ -216,6 +404,54 @@ export const SETTINGS_SECTIONS: SectionDef[] = [
         label: "constants.hfToken",
         type: "password",
         hint: "constants.hfHint",
+      },
+      {
+        key: "DEEPSEEK_API_KEY",
+        label: "constants.deepseekApiKey",
+        type: "password",
+        hint: "constants.deepseekHint",
+      },
+      {
+        key: "TOGETHER_API_KEY",
+        label: "constants.togetherApiKey",
+        type: "password",
+        hint: "constants.togetherHint",
+      },
+      {
+        key: "FIREWORKS_API_KEY",
+        label: "constants.fireworksApiKey",
+        type: "password",
+        hint: "constants.fireworksHint",
+      },
+      {
+        key: "CEREBRAS_API_KEY",
+        label: "constants.cerebrasApiKey",
+        type: "password",
+        hint: "constants.cerebrasHint",
+      },
+      {
+        key: "MISTRAL_API_KEY",
+        label: "constants.mistralApiKey",
+        type: "password",
+        hint: "constants.mistralHint",
+      },
+      {
+        key: "PERPLEXITY_API_KEY",
+        label: "constants.perplexityApiKey",
+        type: "password",
+        hint: "constants.perplexityHint",
+      },
+      {
+        key: "NVIDIA_API_KEY",
+        label: "constants.nvidiaApiKey",
+        type: "password",
+        hint: "constants.nvidiaHint",
+      },
+      {
+        key: "CUSTOM_API_KEY",
+        label: "constants.customApiKey",
+        type: "password",
+        hint: "constants.customHint",
       },
       {
         key: "GOOGLE_API_KEY",
@@ -524,13 +760,13 @@ export const GATEWAY_SECTIONS: SectionDef[] = [
         hint: "constants.webhookHint",
       },
       {
-        key: "HA_URL",
+        key: "HASS_URL",
         label: "constants.haUrl",
         type: "text",
         hint: "constants.haUrlHint",
       },
       {
-        key: "HA_TOKEN",
+        key: "HASS_TOKEN",
         label: "constants.haToken",
         type: "password",
         hint: "constants.haTokenHint",
@@ -651,14 +887,30 @@ export const GATEWAY_PLATFORMS: PlatformDef[] = [
     key: "home_assistant",
     label: "constants.platformHomeAssistant",
     description: "constants.platformHomeAssistantDesc",
-    fields: ["HA_URL", "HA_TOKEN"],
+    fields: ["HASS_URL", "HASS_TOKEN"],
   },
 ];
 
 // ── Install ─────────────────────────────────────────────
 
-export const INSTALL_CMD =
+export const UNIX_INSTALL_CMD =
   "curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh | bash";
+export const INSTALL_CMD_UNIX = UNIX_INSTALL_CMD;
+export const WINDOWS_INSTALL_CMD =
+  "powershell -NoProfile -ExecutionPolicy Bypass -c \"$hermesHome = Join-Path $env:USERPROFILE '.hermes'; $installDir = Join-Path $hermesHome 'hermes-agent'; $installer = [ScriptBlock]::Create((irm https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.ps1 -UseBasicParsing)); & $installer -SkipSetup -HermesHome $hermesHome -InstallDir $installDir\"";
+export const INSTALL_CMD =
+  typeof window !== "undefined" &&
+  window.electron?.process?.platform === "win32"
+    ? WINDOWS_INSTALL_CMD
+    : UNIX_INSTALL_CMD;
+
+export const INSTALL_CMD_WIN = WINDOWS_INSTALL_CMD;
+
+export function getInstallCmd(): string {
+  return window.electron?.process?.platform === "win32"
+    ? WINDOWS_INSTALL_CMD
+    : UNIX_INSTALL_CMD;
+}
 
 // Helper to resolve i18n key or return as-is
 export function tk(t: (key: string) => string, value: string): string {

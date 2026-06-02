@@ -6,9 +6,17 @@ import { existsSync } from "fs";
 import {
   HERMES_HOME,
   HERMES_PYTHON,
-  HERMES_SCRIPT,
+  hermesCliArgs,
   getEnhancedPath,
 } from "./installer";
+import {
+  getActiveProfileNameSync,
+  isValidNamedProfileName,
+  isValidProfileName,
+  pidIsAliveAs,
+  PROFILE_NAME_ERROR,
+} from "./utils";
+import { HIDDEN_SUBPROCESS_OPTIONS } from "./process-options";
 
 const PROFILES_DIR = join(HERMES_HOME, "profiles");
 
@@ -74,24 +82,23 @@ async function countSkills(profilePath: string): Promise<number> {
 async function isGatewayRunning(profilePath: string): Promise<boolean> {
   const pidFile = join(profilePath, "gateway.pid");
   try {
-    const raw = await fs.readFile(pidFile, "utf-8");
-    const pid = parseInt(raw.trim(), 10);
+    const raw = (await fs.readFile(pidFile, "utf-8")).trim();
+    // The Python hermes CLI writes JSON: {"pid": <n>, "kind": ..., ...}.
+    // Older builds wrote a bare integer, so fall back to parseInt.
+    const parsed = raw.startsWith("{")
+      ? (JSON.parse(raw) as { pid?: unknown }).pid
+      : parseInt(raw, 10);
+    const pid =
+      typeof parsed === "number" && Number.isFinite(parsed) ? parsed : NaN;
     if (isNaN(pid)) return false;
-    process.kill(pid, 0);
-    return true;
+    return pidIsAliveAs(pid, ["python", "pythonw"]);
   } catch {
     return false;
   }
 }
 
 async function getActiveProfileName(): Promise<string> {
-  const activeFile = join(HERMES_HOME, "active_profile");
-  try {
-    const name = await fs.readFile(activeFile, "utf-8");
-    return name.trim() || "default";
-  } catch {
-    return "default";
-  }
+  return getActiveProfileNameSync();
 }
 
 async function fileExists(path: string): Promise<boolean> {
@@ -108,14 +115,19 @@ export async function listProfiles(): Promise<ProfileInfo[]> {
   const profiles: ProfileInfo[] = [];
 
   // Default profile is HERMES_HOME itself
-  const [defaultConfig, defaultHasEnv, defaultHasSoul, defaultSkills, defaultGw] =
-    await Promise.all([
-      readProfileConfig(HERMES_HOME),
-      fileExists(join(HERMES_HOME, ".env")),
-      fileExists(join(HERMES_HOME, "SOUL.md")),
-      countSkills(HERMES_HOME),
-      isGatewayRunning(HERMES_HOME),
-    ]);
+  const [
+    defaultConfig,
+    defaultHasEnv,
+    defaultHasSoul,
+    defaultSkills,
+    defaultGw,
+  ] = await Promise.all([
+    readProfileConfig(HERMES_HOME),
+    fileExists(join(HERMES_HOME, ".env")),
+    fileExists(join(HERMES_HOME, "SOUL.md")),
+    countSkills(HERMES_HOME),
+    isGatewayRunning(HERMES_HOME),
+  ]);
 
   profiles.push({
     name: "default",
@@ -135,20 +147,26 @@ export async function listProfiles(): Promise<ProfileInfo[]> {
     try {
       const dirs = await fs.readdir(PROFILES_DIR);
       const profilePromises = dirs.map(async (name) => {
+        // Skip dotfiles like .DS_Store so they don't get mistaken for profiles.
+        if (name.startsWith(".")) return null;
+        if (!isValidNamedProfileName(name)) return null;
+
         const profilePath = join(PROFILES_DIR, name);
         const stat = await fs.stat(profilePath);
         if (!stat.isDirectory()) return null;
 
-        const hasConfig = await fileExists(join(profilePath, "config.yaml"));
-        const hasEnvFile = await fileExists(join(profilePath, ".env"));
-        if (!hasConfig && !hasEnvFile) return null;
-
-        const [config, hasSoul, skillCount, gwRunning] = await Promise.all([
-          readProfileConfig(profilePath),
-          fileExists(join(profilePath, "SOUL.md")),
-          countSkills(profilePath),
-          isGatewayRunning(profilePath),
-        ]);
+        // Any subdirectory of ~/.hermes/profiles/ is treated as a profile.
+        // We deliberately do NOT require config.yaml or .env to exist —
+        // a freshly created profile may have neither yet, and filtering on
+        // them silently hides it from the UI (issue #19).
+        const [config, hasEnvFile, hasSoul, skillCount, gwRunning] =
+          await Promise.all([
+            readProfileConfig(profilePath),
+            fileExists(join(profilePath, ".env")),
+            fileExists(join(profilePath, "SOUL.md")),
+            countSkills(profilePath),
+            isGatewayRunning(profilePath),
+          ]);
 
         return {
           name,
@@ -180,11 +198,18 @@ export function createProfile(
   name: string,
   clone: boolean,
 ): { success: boolean; error?: string } {
+  if (name === "default") {
+    return { success: false, error: "Cannot create the default profile" };
+  }
+  if (!isValidNamedProfileName(name)) {
+    return { success: false, error: PROFILE_NAME_ERROR };
+  }
+
   try {
     const args = clone
       ? ["profile", "create", name, "--clone"]
       : ["profile", "create", name];
-    execFileSync(HERMES_PYTHON, [HERMES_SCRIPT, ...args], {
+    execFileSync(HERMES_PYTHON, hermesCliArgs(args), {
       cwd: join(HERMES_HOME, "hermes-agent"),
       env: {
         ...process.env,
@@ -194,6 +219,7 @@ export function createProfile(
       },
       stdio: "pipe",
       timeout: 15000,
+      ...HIDDEN_SUBPROCESS_OPTIONS,
     });
     return { success: true };
   } catch (err) {
@@ -209,10 +235,14 @@ export function deleteProfile(name: string): {
 } {
   if (name === "default")
     return { success: false, error: "Cannot delete the default profile" };
+  if (!isValidNamedProfileName(name)) {
+    return { success: false, error: PROFILE_NAME_ERROR };
+  }
+
   try {
     execFileSync(
       HERMES_PYTHON,
-      [HERMES_SCRIPT, "profile", "delete", name, "--yes"],
+      hermesCliArgs(["profile", "delete", name, "--yes"]),
       {
         cwd: join(HERMES_HOME, "hermes-agent"),
         env: {
@@ -223,6 +253,7 @@ export function deleteProfile(name: string): {
         },
         stdio: "pipe",
         timeout: 15000,
+        ...HIDDEN_SUBPROCESS_OPTIONS,
       },
     );
     return { success: true };
@@ -234,8 +265,12 @@ export function deleteProfile(name: string): {
 }
 
 export function setActiveProfile(name: string): void {
+  if (!isValidProfileName(name)) {
+    throw new Error(PROFILE_NAME_ERROR);
+  }
+
   try {
-    execFileSync(HERMES_PYTHON, [HERMES_SCRIPT, "profile", "use", name], {
+    execFileSync(HERMES_PYTHON, hermesCliArgs(["profile", "use", name]), {
       cwd: join(HERMES_HOME, "hermes-agent"),
       env: {
         ...process.env,
@@ -245,6 +280,7 @@ export function setActiveProfile(name: string): void {
       },
       stdio: "pipe",
       timeout: 10000,
+      ...HIDDEN_SUBPROCESS_OPTIONS,
     });
   } catch {
     // ignore

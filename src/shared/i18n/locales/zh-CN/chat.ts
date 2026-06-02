@@ -21,6 +21,21 @@ export default {
   deny: "拒绝",
   newChat: "新聊天 (Cmd+N)",
   clearChat: "清空聊天",
+  setContextFolder: "设置上下文文件夹",
+  contextFolderActive: "上下文文件夹：{{path}}",
+  removeContextFolder: "移除上下文文件夹",
+  attach: "上传文件",
+  removeAttachment: "移除附件",
+  dropToAttach: "拖放文件以添加附件",
+  attachUnsupported: "{{name}}：不支持的文件类型",
+  attachImageTooLarge: "{{name}}：图片过大（最大 50 MB）",
+  attachImageUncompressible:
+    "{{name}}：无法将图片压缩到合适大小（动画 GIF 或不支持的格式）。请尝试使用静态截图。",
+  attachTextTooLarge: "{{name}}：文件过大（最大 256 KB）",
+  attachTooMany: "附件数量过多（每条消息最多 10 个）",
+  attachReadFailed: "{{name}}：无法读取",
+  attachRemoteModeBinary:
+    "{{name}}：PDF/二进制附件需要本地模式 — 图片和文本文件仍可使用。",
   fastMode: "快速模式",
   fastModeOn: "快速模式 开启",
   fastModeActive: "优先处理已激活 — 在支持的模型上降低延迟。点击禁用。",
@@ -31,6 +46,10 @@ export default {
   categoryTools: "工具",
   categoryInfo: "信息",
   noUsageData: "暂无使用数据。请先发送一条消息。",
+  media: {
+    open: "打开",
+    saveAs: "另存为…",
+  },
   commands: {
     new: "开始新对话",
     clear: "清空对话历史",
@@ -55,5 +74,11 @@ export default {
     memory: "查看代理记忆",
     persona: "查看当前人格",
     version: "查看 Hermes 版本",
+  },
+  worktree: {
+    loading: "加载中",
+    empty: "文件夹为空",
+    emptyFolder: "空文件夹",
+    errorLoading: "加载文件夹内容失败",
   },
 } as const;

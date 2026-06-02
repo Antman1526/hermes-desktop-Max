@@ -1,14 +1,28 @@
 import { existsSync, readFileSync } from "fs";
 import { join } from "path";
-import { HERMES_HOME } from "./installer";
-import { safeWriteFile } from "./utils";
+import {
+  profileHome,
+  getActiveProfileNameSync,
+  activeStateDbPath,
+  safeWriteFile,
+} from "./utils";
 import Database from "better-sqlite3";
 import { t } from "../shared/i18n";
 import { getAppLocale } from "./locale";
 
-const CACHE_DIR = join(HERMES_HOME, "desktop");
-const CACHE_FILE = join(CACHE_DIR, "sessions.json");
-const DB_PATH = join(HERMES_HOME, "state.db");
+/**
+ * The session cache lives alongside its own profile's data so profiles
+ * don't share a single cache file. The default profile keeps
+ * ~/.hermes/desktop/sessions.json; named profiles use
+ * ~/.hermes/profiles/<name>/desktop/sessions.json (issue #311).
+ */
+function cacheFilePath(): string {
+  return join(
+    profileHome(getActiveProfileNameSync()),
+    "desktop",
+    "sessions.json",
+  );
+}
 
 export interface CachedSession {
   id: string;
@@ -33,7 +47,7 @@ function generateTitle(message: string): string {
   let text = message.trim();
 
   // Remove markdown formatting
-  text = text.replace(/[#*_`~\[\]()]/g, "");
+  text = text.replace(/[#*_`~[\]()]/g, "");
   // Remove URLs
   text = text.replace(/https?:\/\/\S+/g, "");
   // Remove extra whitespace
@@ -56,9 +70,10 @@ function generateTitle(message: string): string {
 }
 
 function readCache(): CacheData {
+  const file = cacheFilePath();
   try {
-    if (!existsSync(CACHE_FILE)) return { sessions: [], lastSync: 0 };
-    return JSON.parse(readFileSync(CACHE_FILE, "utf-8"));
+    if (!existsSync(file)) return { sessions: [], lastSync: 0 };
+    return JSON.parse(readFileSync(file, "utf-8"));
   } catch {
     return { sessions: [], lastSync: 0 };
   }
@@ -66,15 +81,16 @@ function readCache(): CacheData {
 
 function writeCache(data: CacheData): void {
   try {
-    safeWriteFile(CACHE_FILE, JSON.stringify(data));
+    safeWriteFile(cacheFilePath(), JSON.stringify(data));
   } catch {
     // non-fatal
   }
 }
 
 function getDb(): Database.Database | null {
-  if (!existsSync(DB_PATH)) return null;
-  return new Database(DB_PATH, { readonly: true });
+  const dbPath = activeStateDbPath();
+  if (!existsSync(dbPath)) return null;
+  return new Database(dbPath, { readonly: true });
 }
 
 // Sync from hermes DB to local cache — only fetches new/updated sessions
@@ -101,20 +117,25 @@ export function syncSessionCache(): CachedSession[] {
       title: string | null;
     }>;
 
-    const existingIds = new Set(cache.sessions.map((s) => s.id));
-    let newSessions: CachedSession[] = [];
+    // Index existing sessions by id once so the per-row update below is
+    // O(1) instead of O(N). Without this, syncing N existing sessions
+    // against N new rows is O(N²) and visibly slows app startup once a
+    // user has accumulated thousands of sessions (issue #16).
+    const existingById = new Map<string, CachedSession>();
+    for (const s of cache.sessions) existingById.set(s.id, s);
+    const newSessions: CachedSession[] = [];
 
+    const refreshedIds = new Set<string>();
     for (const row of rows) {
-      if (existingIds.has(row.id)) {
-        // Update existing entry (message count may have changed)
-        const idx = cache.sessions.findIndex((s) => s.id === row.id);
-        if (idx >= 0) {
-          cache.sessions[idx].messageCount = row.message_count;
-        }
+      refreshedIds.add(row.id);
+      const existing = existingById.get(row.id);
+      if (existing) {
+        existing.messageCount = row.message_count;
+        if (row.model) existing.model = row.model;
+        if (row.title) existing.title = row.title;
         continue;
       }
 
-      // Generate title from first user message
       let title = row.title || "";
       if (!title) {
         try {
@@ -143,9 +164,47 @@ export function syncSessionCache(): CachedSession[] {
       });
     }
 
-    // Merge: new sessions first (most recent), then existing
-    const allSessions = [...newSessions, ...cache.sessions];
-    // Sort by startedAt descending
+    // Phase 2: refresh message_count for cached sessions that weren't
+    // returned by the lastSync-windowed query above. Without this, an
+    // old session that's still accumulating messages keeps the stale
+    // count it had at first sync — the renderer reads from the cache,
+    // so the UI reports e.g. 15 messages when the conversation actually
+    // has 200+. Issue #226. Cheap (single column, no joins, batched IN
+    // clause), and skipped entirely on a first sync since cache.sessions
+    // is empty.
+    const staleIds = cache.sessions
+      .map((s) => s.id)
+      .filter((id) => !refreshedIds.has(id));
+    if (staleIds.length > 0) {
+      // SQLite caps prepared-statement parameters; chunk well under
+      // SQLITE_MAX_VARIABLE_NUMBER (default 999 on older builds) for
+      // portability across the better-sqlite3 versions hermes ships.
+      const CHUNK = 500;
+      const countsById = new Map<string, number>();
+      for (let i = 0; i < staleIds.length; i += CHUNK) {
+        const chunk = staleIds.slice(i, i + CHUNK);
+        const placeholders = chunk.map(() => "?").join(", ");
+        const refreshed = db
+          .prepare(
+            `SELECT id, message_count FROM sessions WHERE id IN (${placeholders})`,
+          )
+          .all(...chunk) as Array<{ id: string; message_count: number }>;
+        for (const r of refreshed) countsById.set(r.id, r.message_count);
+      }
+      for (const s of cache.sessions) {
+        const fresh = countsById.get(s.id);
+        if (fresh !== undefined && fresh !== s.messageCount) {
+          s.messageCount = fresh;
+        }
+      }
+    }
+
+    // Merge via Map to prevent duplicates: existing sessions (already
+    // mutated in-place above) plus newly discovered sessions.
+    const merged = new Map<string, CachedSession>();
+    for (const s of cache.sessions) merged.set(s.id, s);
+    for (const s of newSessions) merged.set(s.id, s);
+    const allSessions = Array.from(merged.values());
     allSessions.sort((a, b) => b.startedAt - a.startedAt);
 
     const updated: CacheData = {
@@ -162,23 +221,29 @@ export function syncSessionCache(): CachedSession[] {
 }
 
 // Fast read from cache only (no DB access)
-export function listCachedSessions(
-  limit = 50,
-  offset = 0,
-): CachedSession[] {
+export function listCachedSessions(limit = 50, offset = 0): CachedSession[] {
   const cache = readCache();
   return cache.sessions.slice(offset, offset + limit);
 }
 
 // Update title for a specific session
-export function updateSessionTitle(
-  sessionId: string,
-  title: string,
-): void {
+export function updateSessionTitle(sessionId: string, title: string): void {
   const cache = readCache();
   const idx = cache.sessions.findIndex((s) => s.id === sessionId);
   if (idx >= 0) {
     cache.sessions[idx].title = title;
+    writeCache(cache);
+  }
+}
+
+// Remove a session entry from the local cache. Called after the underlying
+// row in state.db is deleted so the renderer's fast-path cache doesn't keep
+// surfacing a session that no longer exists.
+export function removeSessionFromCache(sessionId: string): void {
+  const cache = readCache();
+  const next = cache.sessions.filter((s) => s.id !== sessionId);
+  if (next.length !== cache.sessions.length) {
+    cache.sessions = next;
     writeCache(cache);
   }
 }

@@ -7,6 +7,7 @@ export default {
   retryInstall: "Retry Installation",
   terminalInstallHint: "Install via terminal, then come back:",
   recheck: "I've installed it — check again",
+  switchToLocal: "Switch to local mode",
   installSizeHint: "This will install required components (~2 GB)",
   copyInstallCommand: "Copy install command",
   dividerOr: "or",
@@ -18,5 +19,6 @@ export default {
   remoteApiKeyPlaceholder: "Bearer token (API_SERVER_KEY)",
   testingConnection: "Testing",
   connect: "Connect",
-  remoteHint: "Leave the key empty if the server accepts unauthenticated requests (e.g. via SSH tunnel to localhost).",
+  remoteHint:
+    "Leave the key empty if the server accepts unauthenticated requests (e.g. via SSH tunnel to localhost).",
 } as const;

@@ -1,6 +1,7 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { GATEWAY_SECTIONS, GATEWAY_PLATFORMS } from "../../constants";
 import { useI18n } from "../../components/useI18n";
+import BrandLogo from "../../components/common/BrandLogo";
 
 function Gateway({ profile }: { profile?: string }): React.JSX.Element {
   const { t } = useI18n();
@@ -11,6 +12,12 @@ function Gateway({ profile }: { profile?: string }): React.JSX.Element {
   >({});
   const [savedKey, setSavedKey] = useState<string | null>(null);
   const [visibleKeys, setVisibleKeys] = useState<Set<string>>(new Set());
+  const gatewayStatusTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+  const platformStatusTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
 
   const loadConfig = useCallback(async (): Promise<void> => {
     const envData = await window.hermesAPI.getEnv(profile);
@@ -35,28 +42,36 @@ function Gateway({ profile }: { profile?: string }): React.JSX.Element {
   }, []);
 
   async function toggleGateway(): Promise<void> {
+    if (gatewayStatusTimeoutRef.current) {
+      clearTimeout(gatewayStatusTimeoutRef.current);
+      gatewayStatusTimeoutRef.current = null;
+    }
     if (gatewayRunning) {
       await window.hermesAPI.stopGateway();
       setGatewayRunning(false);
     } else {
       const started = await window.hermesAPI.startGateway();
       setGatewayRunning(started);
-      // Re-check status after a short delay to confirm it stayed up
-      setTimeout(async () => {
+      gatewayStatusTimeoutRef.current = setTimeout(async () => {
         const status = await window.hermesAPI.gatewayStatus();
         setGatewayRunning(status);
-      }, 2000);
+        gatewayStatusTimeoutRef.current = null;
+      }, 5000);
     }
   }
 
   async function togglePlatform(platform: string): Promise<void> {
+    if (platformStatusTimeoutRef.current) {
+      clearTimeout(platformStatusTimeoutRef.current);
+      platformStatusTimeoutRef.current = null;
+    }
     const newValue = !platformEnabled[platform];
     setPlatformEnabled((prev) => ({ ...prev, [platform]: newValue }));
     await window.hermesAPI.setPlatformEnabled(platform, newValue, profile);
-    // Re-check gateway status after restart
-    setTimeout(async () => {
+    platformStatusTimeoutRef.current = setTimeout(async () => {
       const status = await window.hermesAPI.gatewayStatus();
       setGatewayRunning(status);
+      platformStatusTimeoutRef.current = null;
     }, 3000);
   }
 
@@ -126,13 +141,16 @@ function Gateway({ profile }: { profile?: string }): React.JSX.Element {
         {GATEWAY_PLATFORMS.map((platform) => (
           <div key={platform.key} className="settings-platform-card">
             <div className="settings-platform-header">
-              <div className="settings-platform-info">
-                <span className="settings-platform-label">
-                  {t(platform.label)}
-                </span>
-                <span className="settings-platform-desc">
-                  {t(platform.description)}
-                </span>
+              <div className="settings-platform-left">
+                <BrandLogo provider={platform.key} size={28} />
+                <div className="settings-platform-info">
+                  <span className="settings-platform-label">
+                    {t(platform.label)}
+                  </span>
+                  <span className="settings-platform-desc">
+                    {t(platform.description)}
+                  </span>
+                </div>
               </div>
               <label className="tools-toggle">
                 <input
@@ -153,7 +171,9 @@ function Gateway({ profile }: { profile?: string }): React.JSX.Element {
                       <label className="settings-field-label">
                         {t(field.label)}
                         {savedKey === field.key && (
-                          <span className="settings-saved">{t("common.saved")}</span>
+                          <span className="settings-saved">
+                            {t("common.saved")}
+                          </span>
                         )}
                       </label>
                       <div className="settings-input-row">
@@ -177,7 +197,9 @@ function Gateway({ profile }: { profile?: string }): React.JSX.Element {
                             className="btn-ghost settings-toggle-btn"
                             onClick={() => toggleVisibility(field.key)}
                           >
-                            {visibleKeys.has(field.key) ? t("common.hide") : t("common.show")}
+                            {visibleKeys.has(field.key)
+                              ? t("common.hide")
+                              : t("common.show")}
                           </button>
                         )}
                       </div>
@@ -220,7 +242,9 @@ function Gateway({ profile }: { profile?: string }): React.JSX.Element {
                     className="btn-ghost settings-toggle-btn"
                     onClick={() => toggleVisibility(field.key)}
                   >
-                    {visibleKeys.has(field.key) ? t("common.hide") : t("common.show")}
+                    {visibleKeys.has(field.key)
+                      ? t("common.hide")
+                      : t("common.show")}
                   </button>
                 )}
               </div>

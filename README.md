@@ -1,11 +1,17 @@
-<img width="100%" alt="HERMES DESKTOP" src="https://github.com/user-attachments/assets/80585955-3bae-4aee-af90-a1e61757ccb8" />
+<img width="100%" alt="HERMES DESKTOP" src="previews/header.webp" />
 
 <br/>
 <p align="center">
   <a href="https://hermes-agent.nousresearch.com/docs/"><img src="https://img.shields.io/badge/Docs-hermes--agent.nousresearch.com-FFD700?style=for-the-badge" alt="Documentation"></a>
-  <a href="https://discord.gg/NousResearch"><img src="https://img.shields.io/badge/Discord-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Discord"></a>
+  <a href="https://t.me/hermes_agent_desktop"><img src="https://img.shields.io/badge/Telegram-2CA5E0?style=for-the-badge&logo=telegram&logoColor=white" alt="Telegram"></a>
   <a href="https://github.com/fathah/hermes-desktop/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-MIT-green?style=for-the-badge" alt="License: MIT"></a>
-  <a href="https://github.com/fathah/hermes-desktop/releases/"><img src="https://img.shields.io/badge/Download-Releases-FF6600?style=for-the-badge" alt="Releases"></a>
+  <a href="https://hermesagents.cc/"><img src="https://img.shields.io/badge/Download-Releases-FF6600?style=for-the-badge" alt="Releases"></a>
+<a href="https://github.com/fathah/hermes-desktop/stargazers">
+  <img src="https://img.shields.io/github/stars/fathah/hermes-desktop?style=for-the-badge&color=FFD700&label=Stars" alt="Stars">
+</a>
+  <a href="https://github.com/fathah/hermes-desktop/releases/">
+  <img src="https://img.shields.io/github/downloads/fathah/hermes-desktop/total?style=for-the-badge&color=00B496&label=Total%20Downloads" alt="Downloads">
+</a>
 </p>
 
 > **This project is in active development.** Features may change, and some things might break. If you run into a problem or have an idea, [open an issue](https://github.com/fathah/hermes-desktop/issues). Contributions are welcome!
@@ -14,6 +20,7 @@
 
 - English: `README.md`
 - 简体中文: `README.zh-CN.md`
+- 日本語: `README.ja-JP.md`
 
 Hermes Desktop is a native desktop app for installing, configuring, and chatting with [Hermes Agent](https://github.com/NousResearch/hermes-agent) — a self-improving AI assistant with tool use, multi-platform messaging, and a closed learning loop.
 
@@ -40,7 +47,7 @@ This fork builds on that foundation with additional Windows runtime work, local 
 
 ## Install
 
-Download the latest build from the [Releases](https://github.com/fathah/hermes-desktop/releases/) page.
+<a href="https://hermesagents.cc/"><img width="380" alt="Download Now" src="previews/download.webp" /></a>
 
 | Platform | File                  |
 | -------- | --------------------- |
@@ -48,18 +55,62 @@ Download the latest build from the [Releases](https://github.com/fathah/hermes-d
 | Windows  | `.exe` setup          |
 | Linux    | `.AppImage` or `.deb` |
 
-> **macOS users:** The app is not code-signed or notarized. macOS will block it on first launch. To fix this, run the following after installing:
+### Windows
+
+> **Windows users:** The installer is not code-signed. Windows SmartScreen will warn on first launch — click "More info" → "Run anyway".
+
+> **WSL users:** If the installer stalls at `Switching to root user to install dependencies...`, Playwright is waiting for a sudo password that has no TTY to read from. Grant passwordless sudo for the install, then revert when finished:
 >
 > ```bash
-> xattr -cr "/Applications/Hermes Agent.app"
+> echo "$USER ALL=(ALL) NOPASSWD: ALL" | sudo tee /etc/sudoers.d/hermes-install
+> # …re-run the installer; once it finishes:
+> sudo rm /etc/sudoers.d/hermes-install
 > ```
 >
-> Or right-click the app → **Open** → click **Open** in the confirmation dialog.
+> Tracked in [#109](https://github.com/fathah/hermes-desktop/issues/109).
+
+### Fedora (RPM)
+
+```bash
+sudo dnf install ./hermes-desktop-<version>.rpm
+```
+
+> **Fedora users:** The `.rpm` is not GPG-signed. If your system enforces signature checking, append `--nogpgcheck` to the install command. Auto-update is not supported for `.rpm` builds (limitation of `electron-updater`); reinstall the new `.rpm` to update.
+
+## Preview
+
+<table>
+<tr>
+<td width="50%" align="center"><b>Chat</b><br/><img width="100%" alt="Chat" src="previews/chat.png" /></td>
+<td width="50%" align="center"><b>Profiles</b><br/><img width="100%" alt="Profiles" src="previews/profiles.png" /></td>
+</tr>
+<tr>
+<td width="50%" align="center"><b>Models</b><br/><img width="100%" alt="Models" src="previews/models.png" /></td>
+<td width="50%" align="center"><b>Providers</b><br/><img width="100%" alt="Providers" src="previews/providers.png" /></td>
+</tr>
+<tr>
+<td width="50%" align="center"><b>Tools</b><br/><img width="100%" alt="Tools" src="previews/tools.png" /></td>
+<td width="50%" align="center"><b>Skills</b><br/><img width="100%" alt="Skills" src="previews/skills.png" /></td>
+</tr>
+<tr>
+<td width="50%" align="center"><b>Schedules</b><br/><img width="100%" alt="Schedules" src="previews/schedules.png" /></td>
+<td width="50%" align="center"><b>Gateway</b><br/><img width="100%" alt="Gateway" src="previews/gateway.png" /></td>
+</tr>
+<tr>
+<td width="50%" align="center"><b>Persona</b><br/><img width="100%" alt="Persona" src="previews/persona.png" /></td>
+<td width="50%" align="center"><b>Kanban</b><br/><img width="100%" alt="Kanban" src="previews/kanban.png" /></td>
+</tr>
+<tr>
+<td width="50%" align="center"><b>Office</b><br/><img width="100%" alt="Office" src="previews/office.png" /></td>
+<td width="50%" align="center"><b>Settings</b><br/><img width="100%" alt="Settings" src="previews/settings.png" /></td>
+</tr>
+</table>
 
 ## Features
 
 - **Guided first-run install** for Hermes Agent with progress tracking and dependency resolution
-- **Multi-provider support** — OpenRouter, Anthropic, OpenAI, Google (Gemini), xAI (Grok), Nous Portal, Qwen, MiniMax, Hugging Face, Groq, and local OpenAI-compatible endpoints (LM Studio, Ollama, vLLM, llama.cpp)
+- **Local or remote backend** — run Hermes locally on `127.0.0.1:8642`, or connect the desktop app to a remote Hermes API server with URL + API key
+- **Multi-provider support** — OpenRouter, Anthropic, OpenAI, Google (Gemini), xAI (Grok), Nous Portal, Qwen, MiniMax, Hugging Face, Groq, and local OpenAI-compatible endpoints (LM Studio, Atomic Chat, Ollama, vLLM, llama.cpp)
 - **Streaming chat UI** with SSE streaming, tool progress indicators, markdown rendering, and syntax highlighting
 - **Token usage tracking** — live prompt/completion token counts and cost display in the chat footer, plus a `/usage` slash command
 - **22 slash commands** — `/new`, `/clear`, `/fast`, `/web`, `/image`, `/browse`, `/code`, `/shell`, `/usage`, `/help`, `/tools`, `/skills`, `/model`, `/memory`, `/persona`, `/version`, `/compact`, `/compress`, `/undo`, `/retry`, `/debug`, `/status`, and more
@@ -78,34 +129,18 @@ Download the latest build from the [Releases](https://github.com/fathah/hermes-d
 - **i18n ready** — internationalization framework with English locale covering all screens, ready for community translations
 - **Test suite** — SSE parser, IPC handlers, preload API surface, installer utilities, and constants validation with Vitest
 
-## Preview
-
-<table>
-<tr>
-<td width="50%" align="center"><b>Office</b><br/><img width="100%" alt="Office" src="https://github.com/user-attachments/assets/214bfa60-48ec-4449-be40-370628205147" /></td>
-<td width="50%" align="center"><b>Chat</b><br/><img width="100%" alt="Chat" src="https://github.com/user-attachments/assets/ca84a56c-4d14-4775-96bb-c725069988be" /></td>
-</tr>
-<tr>
-<td width="50%" align="center"><b>Profiles</b><br/><img width="100%" alt="Profiles" src="https://github.com/user-attachments/assets/bd812e4a-bbdc-4141-b3a8-1ab5b0e561d4" /></td>
-<td width="50%" align="center"><b>Tools</b><br/><img width="100%" alt="Tools" src="https://github.com/user-attachments/assets/ad051fbe-055d-40d2-b6dd-959c522412d2" /></td>
-</tr>
-<tr>
-<td width="50%" align="center"><b>Settings</b><br/><img width="100%" alt="Settings" src="https://github.com/user-attachments/assets/b3f7e0d8-b087-4935-b57c-f8db30491f2e" /></td>
-<td width="50%" align="center"><b>Skills</b><br/><img width="100%" alt="Skills" src="https://github.com/user-attachments/assets/508c3501-52eb-419d-8cfd-06268875ff62" /></td>
-</tr>
-</table>
-
 ## How It Works
 
 On first launch, the app:
 
-1. Checks whether Hermes is already installed in `~/.hermes`.
-2. If not installed, runs the official Hermes installer with dependency resolution (Git, uv, Python 3.11+).
-3. Prompts for an API provider or local model endpoint.
-4. Saves provider config and API keys through Hermes config files.
-5. Launches the main workspace once setup is complete.
+1. Asks whether you want to run Hermes **locally** or connect to a **remote** Hermes API server.
+2. **Local mode:** checks whether Hermes is already installed in `~/.hermes`; if not, runs the official Hermes installer with dependency resolution (Git, uv, Python 3.11+).
+3. **Remote mode:** prompts for the remote API URL and API key, validates the connection, and skips local install.
+4. Prompts for an API provider or local model endpoint.
+5. Saves provider config and API keys through Hermes config files.
+6. Launches the main workspace once setup is complete.
 
-Chat requests go through a local API server (`http://127.0.0.1:8642`) with SSE streaming. The desktop app parses the stream in real time, rendering tool progress, markdown content, and token usage as it arrives.
+In local mode, chat requests go through `http://127.0.0.1:8642` with SSE streaming. In remote mode, the app talks to your configured remote URL with the same streaming protocol. The desktop app parses the stream in real time, rendering tool progress, markdown content, and token usage as it arrives.
 
 ## Screens
 
@@ -142,7 +177,7 @@ Chat requests go through a local API server (`http://127.0.0.1:8642`) with SSE s
 | **Groq**            | Fast inference (voice/STT)               |
 | **Local/Custom**    | Any OpenAI-compatible endpoint           |
 
-Local presets are included for LM Studio, Ollama, vLLM, and llama.cpp.
+Local presets are included for LM Studio, Atomic Chat, Ollama, vLLM, and llama.cpp.
 
 ### Messaging Platforms
 
@@ -210,6 +245,7 @@ Platform packaging:
 npm run build:mac
 npm run build:win
 npm run build:linux
+npm run build:rpm    # Fedora/RHEL .rpm only
 ```
 
 ### Windows Notes
@@ -249,6 +285,7 @@ Supported setup paths in the UI:
 Local presets are included for:
 
 - LM Studio
+- Atomic Chat
 - Ollama
 - vLLM
 - llama.cpp

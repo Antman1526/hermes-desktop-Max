@@ -1,6 +1,6 @@
 import { useEffect } from "react";
-import splashBg from "../../assets/splash.png";
-import splashLogo from "../../assets/splashtext.png";
+import splashBg from "../../assets/hermesbg.webp";
+import splashLogo from "../../assets/splashtext-w.webp";
 
 interface SplashScreenProps {
   onFinished: () => void;
@@ -8,8 +8,7 @@ interface SplashScreenProps {
 
 function SplashScreen({ onFinished }: SplashScreenProps): React.JSX.Element {
   useEffect(() => {
-    const doneTimer = setTimeout(() => onFinished(), 4000);
-    return () => clearTimeout(doneTimer);
+    onFinished();
   }, [onFinished]);
 
   return (

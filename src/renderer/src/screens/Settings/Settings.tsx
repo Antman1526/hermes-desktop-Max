@@ -1,8 +1,44 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useTheme } from "../../components/ThemeProvider";
-import { SETTINGS_SECTIONS, PROVIDERS, THEME_OPTIONS } from "../../constants";
+import { THEME_OPTIONS } from "../../constants";
 import { useI18n } from "../../components/useI18n";
-import { Download, Upload, FileText } from "lucide-react";
+import { APP_LOCALES, type AppLocale } from "../../../../shared/i18n";
+import {
+  Check,
+  ChevronDown,
+  Download,
+  Upload,
+  FileText,
+  Send,
+} from "lucide-react";
+import {
+  getAnalyticsConsent,
+  setAnalyticsConsent,
+} from "../../utils/analytics";
+
+const TELEGRAM_COMMUNITY_URL = "https://t.me/hermes_agent_desktop";
+
+const LANGUAGE_NATIVE_NAMES: Record<AppLocale, string> = {
+  en: "English",
+  es: "Español",
+  id: "Bahasa Indonesia",
+  ja: "日本語",
+  "pt-BR": "Português (BR)",
+  "pt-PT": "Português (PT)",
+  "zh-CN": "简体中文",
+  "zh-TW": "繁體中文（台灣）",
+};
+
+// Build a mask string the same width as the stored API key so the
+// "saved" state of the input looks like a key, not a constant blob.
+// Length is exposed by the main process via PublicConnectionConfig.
+// 0 falls back to 8 dots so the user gets a visible "set" indicator
+// even if main didn't report a length yet. Capped to keep absurdly
+// long keys from blowing up the field.
+function makeApiKeyMask(length: number): string {
+  const n = Math.min(Math.max(length, 8), 128);
+  return "*".repeat(n);
+}
 
 // Read cached values from localStorage for instant display
 function getCachedVersion(): string | null {
@@ -22,18 +58,9 @@ function getCachedOpenClaw(): { found: boolean; path: string | null } | null {
   }
 }
 
-function Settings({
-  profile,
-  visible,
-}: {
-  profile?: string;
-  visible?: boolean;
-}): React.JSX.Element {
-  const { t } = useI18n();
-  const [env, setEnv] = useState<Record<string, string>>({});
-  const [savedKey, setSavedKey] = useState<string | null>(null);
+function Settings({ profile }: { profile?: string }): React.JSX.Element {
+  const { t, locale, setLocale } = useI18n();
   const [hermesHome, setHermesHome] = useState("");
-  const [visibleKeys, setVisibleKeys] = useState<Set<string>>(new Set());
   const { theme, setTheme } = useTheme();
 
   // Hermes engine info — initialize from localStorage cache for instant display
@@ -68,29 +95,24 @@ function Settings({
   >(null);
   const migrationLogRef = useRef<HTMLPreElement>(null);
 
-  // Model config
-  const [modelProvider, setModelProvider] = useState("auto");
-  const [modelName, setModelName] = useState("");
-  const [modelBaseUrl, setModelBaseUrl] = useState("");
-  const [modelSaved, setModelSaved] = useState(false);
-  const modelLoaded = useRef(false);
-  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
   // Connection mode
-  const [connMode, setConnMode] = useState<"local" | "remote">("local");
+  const [connMode, setConnMode] = useState<"local" | "remote" | "ssh">("local");
   const [connRemoteUrl, setConnRemoteUrl] = useState("");
   const [connApiKey, setConnApiKey] = useState("");
+  const [connApiKeyMask, setConnApiKeyMask] = useState("");
+  const [connHasApiKey, setConnHasApiKey] = useState(false);
   const [connTesting, setConnTesting] = useState(false);
   const [connStatus, setConnStatus] = useState<string | null>(null);
   const connLoaded = useRef(false);
+  const [apiServerKeyMissing, setApiServerKeyMissing] = useState(false);
+  const [generatingKey, setGeneratingKey] = useState(false);
 
-  // Credential pool state
-  const [credPool, setCredPool] = useState<
-    Record<string, Array<{ key: string; label: string }>>
-  >({});
-  const [poolProvider, setPoolProvider] = useState("");
-  const [poolNewKey, setPoolNewKey] = useState("");
-  const [poolNewLabel, setPoolNewLabel] = useState("");
+  // SSH connection state
+  const [sshHost, setSshHost] = useState("");
+  const [sshPort, setSshPort] = useState("");
+  const [sshUser, setSshUser] = useState("");
+  const [sshKeyPath, setSshKeyPath] = useState("");
+  const [sshRemotePort, setSshRemotePort] = useState("");
 
   // Backup / Import state
   const [backingUp, setBackingUp] = useState(false);
@@ -113,32 +135,34 @@ function Settings({
   const [dumpOutput, setDumpOutput] = useState<string | null>(null);
   const [dumpRunning, setDumpRunning] = useState(false);
 
+  // Analytics consent
+  const [analyticsEnabled, setAnalyticsEnabled] = useState(() =>
+    getAnalyticsConsent(),
+  );
+
   const loadConfig = useCallback(async (): Promise<void> => {
     // Load fast config first (cached in main process)
-    const [envData, home, mc, pool, aVersion, conn] = await Promise.all([
-      window.hermesAPI.getEnv(profile),
+    const [home, aVersion, conn, keyStatus] = await Promise.all([
       window.hermesAPI.getHermesHome(profile),
-      window.hermesAPI.getModelConfig(profile),
-      window.hermesAPI.getCredentialPool(),
       window.hermesAPI.getAppVersion(),
       window.hermesAPI.getConnectionConfig(),
+      window.hermesAPI.getApiServerKeyStatus(profile),
     ]);
-    setEnv(envData);
     setHermesHome(home);
-    setModelProvider(mc.provider);
-    setModelName(mc.model);
-    setModelBaseUrl(mc.baseUrl);
-    setCredPool(pool);
     setAppVersion(aVersion);
     setConnMode(conn.mode);
     setConnRemoteUrl(conn.remoteUrl);
-    setConnApiKey(conn.apiKey);
+    setConnHasApiKey(conn.hasApiKey);
+    const mask = conn.hasApiKey ? makeApiKeyMask(conn.apiKeyLength) : "";
+    setConnApiKeyMask(mask);
+    setConnApiKey(mask);
+    setSshHost(conn.ssh?.host || "");
+    setSshPort(conn.ssh?.port ? String(conn.ssh.port) : "");
+    setSshUser(conn.ssh?.username || "");
+    setSshKeyPath(conn.ssh?.keyPath || "");
+    setSshRemotePort(conn.ssh?.remotePort ? String(conn.ssh.remotePort) : "");
+    setApiServerKeyMissing(!keyStatus.hasKey);
     connLoaded.current = true;
-
-    // Allow model auto-save after initial values are set
-    requestAnimationFrame(() => {
-      modelLoaded.current = true;
-    });
 
     // Load network settings from config.yaml
     window.hermesAPI.getConfig("network.force_ipv4", profile).then((v) => {
@@ -174,104 +198,8 @@ function Settings({
   }, [profile]);
 
   useEffect(() => {
-    modelLoaded.current = false;
-    loadConfig();
+    void Promise.resolve().then(loadConfig);
   }, [loadConfig]);
-
-  // Refresh model config when the settings screen becomes visible
-  useEffect(() => {
-    if (!visible) return;
-    (async (): Promise<void> => {
-      const mc = await window.hermesAPI.getModelConfig(profile);
-      modelLoaded.current = false;
-      setModelProvider(mc.provider);
-      setModelName(mc.model);
-      setModelBaseUrl(mc.baseUrl);
-      requestAnimationFrame(() => {
-        modelLoaded.current = true;
-      });
-    })();
-  }, [visible, profile]);
-
-  // Auto-save model config when values change (debounced)
-  const saveModelConfig = useCallback(async () => {
-    if (!modelLoaded.current) return;
-    await window.hermesAPI.setModelConfig(
-      modelProvider,
-      modelName,
-      modelBaseUrl,
-      profile,
-    );
-    // Auto-save to models library (dedup handled by backend)
-    if (modelName.trim()) {
-      const displayName = modelName.split("/").pop() || modelName;
-      await window.hermesAPI.addModel(
-        displayName,
-        modelProvider,
-        modelName,
-        modelBaseUrl,
-      );
-    }
-    setModelSaved(true);
-    setTimeout(() => setModelSaved(false), 2000);
-  }, [modelProvider, modelName, modelBaseUrl, profile]);
-
-  useEffect(() => {
-    if (!modelLoaded.current) return;
-    if (saveTimer.current) clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(() => {
-      saveModelConfig();
-    }, 500);
-    return () => {
-      if (saveTimer.current) clearTimeout(saveTimer.current);
-    };
-  }, [modelProvider, modelName, modelBaseUrl, saveModelConfig]);
-
-  async function handleBlur(key: string): Promise<void> {
-    const value = env[key] || "";
-    await window.hermesAPI.setEnv(key, value, profile);
-    setSavedKey(key);
-    setTimeout(() => setSavedKey(null), 2000);
-  }
-
-  function handleChange(key: string, value: string): void {
-    setEnv((prev) => ({ ...prev, [key]: value }));
-  }
-
-  async function handleAddPoolKey(): Promise<void> {
-    if (!poolProvider || !poolNewKey.trim()) return;
-    const existing = credPool[poolProvider] || [];
-    const entries = [
-      ...existing,
-      {
-        key: poolNewKey.trim(),
-        label: poolNewLabel.trim() || `Key ${existing.length + 1}`,
-      },
-    ];
-    await window.hermesAPI.setCredentialPool(poolProvider, entries);
-    setCredPool((prev) => ({ ...prev, [poolProvider]: entries }));
-    setPoolNewKey("");
-    setPoolNewLabel("");
-  }
-
-  async function handleRemovePoolKey(
-    provider: string,
-    index: number,
-  ): Promise<void> {
-    const entries = [...(credPool[provider] || [])];
-    entries.splice(index, 1);
-    await window.hermesAPI.setCredentialPool(provider, entries);
-    setCredPool((prev) => ({ ...prev, [provider]: entries }));
-  }
-
-  function toggleVisibility(key: string): void {
-    setVisibleKeys((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
-  }
 
   async function handleMigrate(): Promise<void> {
     setMigrating(true);
@@ -295,7 +223,9 @@ function Settings({
       }
     } catch (err) {
       cleanup();
-      setMigrationResult((err as Error).message || t("settings.migrationFailed"));
+      setMigrationResult(
+        (err as Error).message || t("settings.migrationFailed"),
+      );
       setMigrationResultType("error");
     }
     setMigrating(false);
@@ -306,36 +236,92 @@ function Settings({
     setMigrationDismissed(true);
   }
 
+  function getConnectionApiKeyForSave(): string | undefined {
+    // Mask sentinel in the field means "the secret is still server-side
+    // and the user hasn't touched it" — always preserve the stored key.
+    // The old code wiped the key whenever the URL changed, so a one-
+    // character URL edit (fix typo, add /v1) silently dropped the saved
+    // credential. To clear the key, the user must explicitly erase the
+    // field.
+    if (connHasApiKey && connApiKey === connApiKeyMask) {
+      return undefined;
+    }
+    return connApiKey.trim();
+  }
+
   async function handleSaveConnection(): Promise<void> {
-    await window.hermesAPI.setConnectionConfig(
-      connMode,
-      connRemoteUrl,
-      connApiKey,
-    );
+    if (connMode === "ssh") {
+      await window.hermesAPI.setSshConfig(
+        sshHost.trim(),
+        parseInt(sshPort, 10) || 22,
+        sshUser.trim(),
+        sshKeyPath.trim(),
+        parseInt(sshRemotePort, 10) || 8642,
+        18642,
+      );
+    } else {
+      const apiKey = getConnectionApiKeyForSave();
+      await window.hermesAPI.setConnectionConfig(
+        connMode,
+        connRemoteUrl,
+        apiKey,
+      );
+      if (apiKey !== undefined) {
+        const hasApiKey = apiKey.length > 0;
+        setConnHasApiKey(hasApiKey);
+        if (hasApiKey) {
+          const mask = makeApiKeyMask(apiKey.length);
+          setConnApiKeyMask(mask);
+          setConnApiKey(mask);
+        } else {
+          setConnApiKeyMask("");
+        }
+      }
+    }
     setConnStatus("Saved");
     setTimeout(() => setConnStatus(null), 2000);
   }
 
   async function handleTestConnection(): Promise<void> {
-    const url = connRemoteUrl.trim();
-    if (!url) {
-      setConnStatus("Please enter a URL");
-      return;
+    if (connMode === "ssh") {
+      if (!sshHost.trim() || !sshUser.trim()) {
+        setConnStatus("Host and username are required");
+        return;
+      }
+      setConnTesting(true);
+      setConnStatus(null);
+      const ok = await window.hermesAPI.testSshConnection(
+        sshHost.trim(),
+        parseInt(sshPort, 10) || 22,
+        sshUser.trim(),
+        sshKeyPath.trim(),
+        parseInt(sshRemotePort, 10) || 8642,
+      );
+      setConnTesting(false);
+      setConnStatus(ok ? "SSH tunnel connected!" : "Could not connect via SSH");
+    } else {
+      const url = connRemoteUrl.trim();
+      if (!url) {
+        setConnStatus("Please enter a URL");
+        return;
+      }
+      setConnTesting(true);
+      setConnStatus(null);
+      const ok = await window.hermesAPI.testRemoteConnection(
+        url,
+        getConnectionApiKeyForSave(),
+      );
+      setConnTesting(false);
+      setConnStatus(ok ? "Connected successfully!" : "Could not reach server");
     }
-    setConnTesting(true);
-    setConnStatus(null);
-    const ok = await window.hermesAPI.testRemoteConnection(
-      url,
-      connApiKey.trim(),
-    );
-    setConnTesting(false);
-    setConnStatus(ok ? "Connected successfully!" : "Could not reach server");
   }
 
   async function handleSwitchToLocal(): Promise<void> {
     setConnMode("local");
     setConnRemoteUrl("");
     setConnApiKey("");
+    setConnApiKeyMask("");
+    setConnHasApiKey(false);
     await window.hermesAPI.setConnectionConfig("local", "", "");
     setConnStatus(t("settings.switchedToLocal"));
     setTimeout(() => setConnStatus(null), 2000);
@@ -429,8 +415,6 @@ function Settings({
     const updateInfo = updateMatch?.[1]?.trim() || null;
     return { version, date, python, sdk, updateInfo };
   })();
-
-  const isCustomProvider = modelProvider === "custom";
 
   return (
     <div className="settings-container">
@@ -535,7 +519,9 @@ function Settings({
               onClick={handleDoctor}
               disabled={doctorRunning}
             >
-              {doctorRunning ? t("settings.runningDiagnosis") : t("settings.runDiagnosis")}
+              {doctorRunning
+                ? t("settings.runningDiagnosis")
+                : t("settings.runDiagnosis")}
             </button>
             <button
               className="btn btn-secondary"
@@ -568,6 +554,28 @@ function Settings({
       </div>
 
       <div className="settings-section">
+        <div className="settings-section-title">Community</div>
+        <div className="settings-field">
+          <div className="settings-field-hint" style={{ marginBottom: 10 }}>
+            Join our Telegram group to ask questions, report issues, and chat
+            with other Hermes users.
+          </div>
+          <div className="settings-hermes-actions">
+            <button
+              className="btn btn-secondary"
+              onClick={() =>
+                window.hermesAPI.openExternal(TELEGRAM_COMMUNITY_URL)
+              }
+              title={TELEGRAM_COMMUNITY_URL}
+            >
+              <Send size={14} style={{ marginRight: 6 }} />
+              Join Telegram Community
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="settings-section">
         <div className="settings-section-title">
           {t("settings.connectionSection")}
           {connStatus && (
@@ -578,7 +586,9 @@ function Settings({
         </div>
 
         <div className="settings-field">
-          <label className="settings-field-label">{t("settings.connectionMode")}</label>
+          <label className="settings-field-label">
+            {t("settings.connectionMode")}
+          </label>
           <div className="settings-theme-options">
             <button
               className={`settings-theme-option ${connMode === "local" ? "active" : ""}`}
@@ -595,18 +605,66 @@ function Settings({
             >
               {t("settings.modeRemote")}
             </button>
+            <button
+              className={`settings-theme-option ${connMode === "ssh" ? "active" : ""}`}
+              onClick={() => setConnMode("ssh")}
+            >
+              SSH Tunnel
+            </button>
           </div>
           <div className="settings-field-hint">
             {connMode === "local"
               ? t("settings.modeLocalHint")
-              : t("settings.modeRemoteHint")}
+              : connMode === "ssh"
+                ? "Tunnel to a remote Hermes over SSH — no exposed ports or API keys needed."
+                : t("settings.modeRemoteHint")}
           </div>
         </div>
+
+        {!apiServerKeyMissing ? null : connMode === "local" ? (
+          <div className="settings-api-key-banner">
+            <div className="settings-api-key-banner-title">
+              Session history disabled — <code>API_SERVER_KEY</code> not set
+            </div>
+            <div className="settings-api-key-banner-desc">
+              Without an API server key the gateway cannot authenticate session
+              continuation requests. Messages will still send, but conversation
+              history won&apos;t be preserved across restarts.
+            </div>
+            <button
+              className="btn btn-primary"
+              disabled={generatingKey}
+              onClick={async () => {
+                setGeneratingKey(true);
+                await window.hermesAPI.generateApiServerKey(profile);
+                setApiServerKeyMissing(false);
+                setGeneratingKey(false);
+                setConnStatus("API key generated — gateway restarting…");
+                setTimeout(() => setConnStatus(null), 4000);
+              }}
+            >
+              {generatingKey ? "Generating…" : "Generate & save a key for me"}
+            </button>
+          </div>
+        ) : (
+          <div className="settings-api-key-banner settings-api-key-banner--info">
+            <div className="settings-api-key-banner-title">
+              Set <code>API_SERVER_KEY</code> on the remote server
+            </div>
+            <div className="settings-api-key-banner-desc">
+              {connMode === "ssh"
+                ? "SSH mode: add API_SERVER_KEY=<your-key> to ~/.hermes/profiles/<profile>/.env on the remote host, then restart the gateway there."
+                : "Remote mode: add API_SERVER_KEY=<your-key> to the .env on your remote Hermes server, then restart the gateway."}
+            </div>
+          </div>
+        )}
 
         {connMode === "remote" && (
           <>
             <div className="settings-field">
-              <label className="settings-field-label">{t("settings.remoteUrl")}</label>
+              <label className="settings-field-label">
+                {t("settings.remoteUrl")}
+              </label>
               <input
                 className="input"
                 type="url"
@@ -620,12 +678,19 @@ function Settings({
               </div>
             </div>
             <div className="settings-field">
-              <label className="settings-field-label">{t("settings.remoteApiKey")}</label>
+              <label className="settings-field-label">
+                {t("settings.remoteApiKey")}
+              </label>
               <input
                 className="input"
                 type="password"
                 value={connApiKey}
                 onChange={(e) => setConnApiKey(e.target.value)}
+                onFocus={(e) => {
+                  if (connApiKey === connApiKeyMask) {
+                    e.currentTarget.select();
+                  }
+                }}
                 placeholder={t("settings.remoteApiKey")}
                 onBlur={handleSaveConnection}
               />
@@ -639,7 +704,101 @@ function Settings({
                 onClick={handleTestConnection}
                 disabled={connTesting}
               >
-                {connTesting ? t("settings.testingConnection") : t("settings.testConnection")}
+                {connTesting
+                  ? t("settings.testingConnection")
+                  : t("settings.testConnection")}
+              </button>
+              <button
+                className="btn btn-primary"
+                onClick={handleSaveConnection}
+              >
+                {t("settings.save")}
+              </button>
+            </div>
+          </>
+        )}
+
+        {connMode === "ssh" && (
+          <>
+            <div className="settings-field">
+              <label className="settings-field-label">SSH Host</label>
+              <input
+                className="input"
+                type="text"
+                value={sshHost}
+                onChange={(e) => setSshHost(e.target.value)}
+                placeholder="192.168.1.100 or myserver.local"
+              />
+            </div>
+            <div className="settings-field">
+              <label className="settings-field-label">SSH Port</label>
+              <input
+                className="input"
+                type="number"
+                value={sshPort}
+                onChange={(e) => setSshPort(e.target.value)}
+                placeholder="22"
+              />
+            </div>
+            <div className="settings-field">
+              <label className="settings-field-label">Username</label>
+              <input
+                className="input"
+                type="text"
+                value={sshUser}
+                onChange={(e) => setSshUser(e.target.value)}
+                placeholder="hermes"
+              />
+            </div>
+            <div className="settings-field">
+              <label className="settings-field-label">
+                Private Key Path{" "}
+                <span style={{ fontWeight: 400, opacity: 0.6 }}>
+                  (optional, defaults to ~/.ssh/id_rsa)
+                </span>
+              </label>
+              <input
+                className="input"
+                type="text"
+                value={sshKeyPath}
+                onChange={(e) => setSshKeyPath(e.target.value)}
+                placeholder="~/.ssh/id_rsa"
+              />
+            </div>
+            <div className="settings-field">
+              <label className="settings-field-label">
+                Remote Hermes Port{" "}
+                <span style={{ fontWeight: 400, opacity: 0.6 }}>
+                  (default 8642)
+                </span>
+              </label>
+              <input
+                className="input"
+                type="number"
+                value={sshRemotePort}
+                onChange={(e) => setSshRemotePort(e.target.value)}
+                placeholder="8642"
+              />
+              <div className="settings-field-hint">
+                Make sure you can run{" "}
+                <code style={{ fontFamily: "monospace" }}>
+                  ssh {sshUser || "user"}@{sshHost || "host"}
+                </code>{" "}
+                without a password prompt. The first connection trusts the host
+                key and stores it in{" "}
+                <code style={{ fontFamily: "monospace" }}>
+                  ~/.ssh/known_hosts
+                </code>
+                ; SSH will fail closed if that key changes later.
+              </div>
+            </div>
+            <div className="settings-hermes-actions">
+              <button
+                className="btn btn-secondary"
+                onClick={handleTestConnection}
+                disabled={connTesting}
+              >
+                {connTesting ? "Testing SSH…" : "Test SSH Connection"}
               </button>
               <button
                 className="btn btn-primary"
@@ -659,7 +818,14 @@ function Settings({
               <div className="settings-migration-title">
                 {t("settings.migrationDetected")}
               </div>
-              <div className="settings-migration-desc" dangerouslySetInnerHTML={{ __html: t("settings.migrationDesc", { path: openclawPath || "" }) }} />
+              <div
+                className="settings-migration-desc"
+                dangerouslySetInnerHTML={{
+                  __html: t("settings.migrationDesc", {
+                    path: openclawPath || "",
+                  }),
+                }}
+              />
             </div>
             <button
               className="btn-ghost settings-migration-dismiss"
@@ -687,7 +853,9 @@ function Settings({
               onClick={handleMigrate}
               disabled={migrating}
             >
-              {migrating ? t("settings.migrating") : t("settings.migrateToHermes")}
+              {migrating
+                ? t("settings.migrating")
+                : t("settings.migrateToHermes")}
             </button>
             <button
               className="btn btn-secondary "
@@ -722,7 +890,57 @@ function Settings({
               </button>
             ))}
           </div>
-          <div className="settings-field-hint">{t("settings.appearanceHint")}</div>
+          <div className="settings-field-hint">
+            {t("settings.appearanceHint")}
+          </div>
+        </div>
+        <div className="settings-field">
+          <label className="settings-field-label">
+            {t("settings.language.label")}
+          </label>
+          <LanguageSelect locale={locale} onSelect={setLocale} />
+          <div className="settings-field-hint">
+            {t("settings.language.hint")}
+          </div>
+        </div>
+      </div>
+
+      <div className="settings-section">
+        <div className="settings-section-title">
+          {t("settings.sections.privacy")}
+        </div>
+        <div className="settings-field">
+          <label className="settings-field-label">
+            {t("settings.analytics.label")}
+            <label
+              className="tools-toggle"
+              style={{ marginLeft: 12, verticalAlign: "middle" }}
+            >
+              <input
+                type="checkbox"
+                checked={analyticsEnabled}
+                onChange={(e) => {
+                  const enabled = e.target.checked;
+                  setAnalyticsEnabled(enabled);
+                  setAnalyticsConsent(enabled);
+                }}
+              />
+              <span className="tools-toggle-track" />
+            </label>
+          </label>
+          <div className="settings-field-hint">
+            {t("settings.analytics.hint")}
+          </div>
+          <ul
+            className="settings-field-hint"
+            style={{ paddingLeft: "1.25em", marginTop: 4 }}
+          >
+            <li>{t("settings.analytics.disclosure.uuid")}</li>
+            <li>{t("settings.analytics.disclosure.platform")}</li>
+            <li>{t("settings.analytics.disclosure.navigation")}</li>
+            <li>{t("settings.analytics.disclosure.endpoint")}</li>
+            <li>{t("settings.analytics.disclosure.notCollected")}</li>
+          </ul>
         </div>
       </div>
 
@@ -765,7 +983,9 @@ function Settings({
           </div>
         </div>
         <div className="settings-field">
-          <label className="settings-field-label">{t("settings.httpProxy")}</label>
+          <label className="settings-field-label">
+            {t("settings.httpProxy")}
+          </label>
           <input
             className="input"
             type="text"
@@ -790,166 +1010,20 @@ function Settings({
 
       {connMode === "remote" && (
         <div className="settings-section">
-          <div className="settings-section-title">{t("settings.serverConfigTitle")}</div>
-          <div className="settings-field-hint" dangerouslySetInnerHTML={{ __html: t("settings.serverConfigHint") }} />
-        </div>
-      )}
-
-      {connMode === "local" && (
-      <div className="settings-section">
-        <div className="settings-section-title">
-          {t("common.model")}
-          {modelSaved && (
-            <span className="settings-saved" style={{ marginLeft: 8 }}>
-              {t("common.saved")}
-            </span>
-          )}
-        </div>
-
-        <div className="settings-field">
-          <label className="settings-field-label">{t("common.provider")}</label>
-          <select
-            className="input settings-select"
-            value={modelProvider}
-            onChange={(e) => {
-              const v = e.target.value;
-              setModelProvider(v);
-              if (v === "custom" && !modelBaseUrl) {
-                setModelBaseUrl("http://localhost:1234/v1");
-              }
-            }}
-          >
-            {PROVIDERS.options.map((opt) => (
-              <option key={opt.value} value={opt.value}>
-                {t(opt.label)}
-              </option>
-            ))}
-          </select>
-          <div className="settings-field-hint">
-            {isCustomProvider
-              ? t("settings.customProviderHint")
-              : t("settings.providerHint")}
+          <div className="settings-section-title">
+            {t("settings.serverConfigTitle")}
           </div>
-        </div>
-
-        <div className="settings-field">
-          <label className="settings-field-label">{t("common.model")}</label>
-          <input
-            className="input"
-            type="text"
-            value={modelName}
-            onChange={(e) => setModelName(e.target.value)}
-            placeholder={t("settings.modelNamePlaceholder")}
+          <div
+            className="settings-field-hint"
+            dangerouslySetInnerHTML={{ __html: t("settings.serverConfigHint") }}
           />
-          <div className="settings-field-hint">
-            {t("settings.modelHint")}
-          </div>
         </div>
-
-        {isCustomProvider && (
-          <div className="settings-field">
-            <label className="settings-field-label">
-              {t("common.baseUrl")}
-            </label>
-            <input
-              className="input"
-              type="text"
-              value={modelBaseUrl}
-              onChange={(e) => setModelBaseUrl(e.target.value)}
-              placeholder={t("settings.modelBaseUrlPlaceholder")}
-            />
-            <div className="settings-field-hint">{t("settings.customBaseUrlHint")}</div>
-          </div>
-        )}
-      </div>
       )}
 
-      {connMode === "local" && (
       <div className="settings-section">
         <div className="settings-section-title">
-          {t("settings.sections.credentialPool")}
+          {t("settings.dataSection")}
         </div>
-        <div className="settings-field">
-          <div className="settings-field-hint" style={{ marginBottom: 10 }}>
-            {t("settings.poolHint")}
-          </div>
-          <div className="settings-pool-add">
-            <select
-              className="input"
-              value={poolProvider}
-              onChange={(e) => setPoolProvider(e.target.value)}
-              style={{ width: 140 }}
-            >
-              <option value="">{t("common.provider")}</option>
-              {PROVIDERS.options
-                .filter((p) => p.value !== "auto")
-                .map((p) => (
-                  <option key={p.value} value={p.value}>
-                    {t(p.label)}
-                  </option>
-                ))}
-            </select>
-            <input
-              className="input"
-              type="password"
-              value={poolNewKey}
-              onChange={(e) => setPoolNewKey(e.target.value)}
-              placeholder={t("settings.apiKeyPlaceholder")}
-              style={{ flex: 1 }}
-            />
-            <input
-              className="input"
-              type="text"
-              value={poolNewLabel}
-              onChange={(e) => setPoolNewLabel(e.target.value)}
-              placeholder={t("settings.labelPlaceholder", { optional: t("common.optional") })}
-              style={{ width: 120 }}
-            />
-            <button
-              className="btn btn-primary btn-sm"
-              onClick={handleAddPoolKey}
-              disabled={!poolProvider || !poolNewKey.trim()}
-            >
-              {t("settings.add")}
-            </button>
-          </div>
-          {Object.entries(credPool).map(
-            ([provider, entries]) =>
-              entries.length > 0 && (
-                <div key={provider} className="settings-pool-group">
-                  <div className="settings-pool-provider">
-                    {PROVIDERS.options.find((p) => p.value === provider)
-                      ? t(PROVIDERS.options.find((p) => p.value === provider)!.label)
-                      : provider}
-                  </div>
-                  {entries.map((entry, idx) => (
-                    <div key={idx} className="settings-pool-entry">
-                      <span className="settings-pool-label">
-                        {entry.label || `${t("settings.keyLabel")} ${idx + 1}`}
-                      </span>
-                      <span className="settings-pool-key">
-                        {entry.key
-                          ? `${entry.key.slice(0, 8)}...${entry.key.slice(-4)}`
-                          : t("settings.empty")}
-                      </span>
-                      <button
-                        className="btn-ghost"
-                        style={{ color: "var(--error)", fontSize: 11 }}
-                        onClick={() => handleRemovePoolKey(provider, idx)}
-                      >
-                        {t("settings.remove")}
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              ),
-          )}
-        </div>
-      </div>
-      )}
-
-      <div className="settings-section">
-        <div className="settings-section-title">{t("settings.dataSection")}</div>
         <div className="settings-field">
           <div className="settings-field-hint" style={{ marginBottom: 10 }}>
             {t("settings.dataHint")}
@@ -1050,48 +1124,73 @@ function Settings({
           </div>
         )}
       </div>
+    </div>
+  );
+}
 
-      {connMode === "local" &&
-        SETTINGS_SECTIONS.map((section) => (
-          <div key={section.title} className="settings-section">
-            <div className="settings-section-title">{t(section.title)}</div>
-            {section.items.map((field) => (
-              <div key={field.key} className="settings-field">
-                <label className="settings-field-label">
-                  {t(field.label)}
-                  {savedKey === field.key && (
-                    <span className="settings-saved">{t("common.saved")}</span>
-                  )}
-                </label>
-                <div className="settings-input-row">
-                  <input
-                    className="input"
-                    type={
-                      field.type === "password" && !visibleKeys.has(field.key)
-                        ? "password"
-                        : "text"
-                    }
-                    value={env[field.key] || ""}
-                    onChange={(e) => handleChange(field.key, e.target.value)}
-                    onBlur={() => handleBlur(field.key)}
-                    placeholder={t(field.label)}
-                  />
-                  {field.type === "password" && (
-                    <button
-                      className="btn-ghost settings-toggle-btn"
-                      onClick={() => toggleVisibility(field.key)}
-                    >
-                      {visibleKeys.has(field.key)
-                        ? t("common.hide")
-                        : t("common.show")}
-                    </button>
-                  )}
-                </div>
-                <div className="settings-field-hint">{t(field.hint)}</div>
-              </div>
-            ))}
-          </div>
-        ))}
+function LanguageSelect({
+  locale,
+  onSelect,
+}: {
+  locale: AppLocale;
+  onSelect: (l: AppLocale) => void;
+}): React.JSX.Element {
+  const [isOpen, setIsOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    function handleClickOutside(e: MouseEvent): void {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setIsOpen(false);
+      }
+    }
+    function handleKey(e: KeyboardEvent): void {
+      if (e.key === "Escape") setIsOpen(false);
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    document.addEventListener("keydown", handleKey);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("keydown", handleKey);
+    };
+  }, [isOpen]);
+
+  return (
+    <div className="settings-language-select" ref={ref}>
+      <button
+        type="button"
+        className="settings-language-trigger"
+        onClick={() => setIsOpen((v) => !v)}
+        aria-haspopup="listbox"
+        aria-expanded={isOpen}
+      >
+        <span>{LANGUAGE_NATIVE_NAMES[locale]}</span>
+        <ChevronDown size={14} />
+      </button>
+      {isOpen && (
+        <div className="settings-language-dropdown" role="listbox">
+          {APP_LOCALES.map((l) => {
+            const active = l === locale;
+            return (
+              <button
+                key={l}
+                type="button"
+                role="option"
+                aria-selected={active}
+                className={`settings-language-option ${active ? "active" : ""}`}
+                onClick={() => {
+                  onSelect(l);
+                  setIsOpen(false);
+                }}
+              >
+                <span>{LANGUAGE_NATIVE_NAMES[l]}</span>
+                {active && <Check size={14} />}
+              </button>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

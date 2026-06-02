@@ -4,11 +4,13 @@ export default {
   agents: "Profiles",
   office: "Office",
   models: "Models",
+  providers: "Providers",
   skills: "Skills",
   soul: "Persona",
   memory: "Memory",
   tools: "Tools",
   schedules: "Schedules",
+  kanban: "Kanban",
   gateway: "Gateway",
   settings: "Settings",
 } as const;

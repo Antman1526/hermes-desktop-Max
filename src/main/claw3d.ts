@@ -1,4 +1,4 @@
-import { spawn, ChildProcess, execSync } from "child_process";
+import { spawn, ChildProcess, spawnSync } from "child_process";
 import {
   existsSync,
   readFileSync,
@@ -6,11 +6,13 @@ import {
   unlinkSync,
   mkdirSync,
 } from "fs";
-import { join } from "path";
+import { join, win32 } from "path";
 import { homedir } from "os";
 import { createConnection } from "net";
 import { getEnhancedPath, HERMES_HOME } from "./installer";
 import { stripAnsi, safeWriteFile } from "./utils";
+import { getApiServerKey, getConnectionConfig, getModelConfig } from "./config";
+import http from "http";
 
 const HERMES_OFFICE_REPO = "https://github.com/fathah/hermes-office";
 const HERMES_OFFICE_DIR = join(HERMES_HOME, "hermes-office");
@@ -28,6 +30,176 @@ let devServerLogs = "";
 let adapterLogs = "";
 let devServerError = "";
 let adapterError = "";
+
+export interface ResolvedCommand {
+  command: string;
+  windowsScript: boolean;
+}
+
+export interface CommandInvocation {
+  command: string;
+  args: string[];
+  windowsVerbatimArguments?: boolean;
+}
+
+interface NpmInvocationOptions {
+  platform?: NodeJS.Platform;
+  fileExists?: (path: string) => boolean;
+}
+
+type Claw3dScript = "dev" | "hermes-adapter";
+
+const CLAW3D_SCRIPT_ARGS: Record<Claw3dScript, string[]> = {
+  dev: ["server/index.js", "--dev"],
+  "hermes-adapter": ["server/hermes-gateway-adapter.js"],
+};
+
+export function isWindowsCommandScript(command: string): boolean {
+  return /\.(cmd|bat)$/i.test(command);
+}
+
+export function pickWindowsCommandCandidate(
+  candidates: string[],
+): ResolvedCommand | null {
+  const normalized = candidates
+    .map((candidate) => candidate.trim())
+    .filter(Boolean);
+  const executable = normalized.find((candidate) => /\.exe$/i.test(candidate));
+  if (executable) {
+    return { command: executable, windowsScript: false };
+  }
+
+  const script = normalized.find(isWindowsCommandScript);
+  if (script) {
+    return { command: script, windowsScript: true };
+  }
+
+  const fallback = normalized[0];
+  return fallback ? { command: fallback, windowsScript: false } : null;
+}
+
+function resolveCommandOnPath(
+  command: string,
+  envPath: string,
+): ResolvedCommand | null {
+  const lookupCommand = process.platform === "win32" ? "where.exe" : "which";
+  const result = spawnSync(lookupCommand, [command], {
+    encoding: "utf8",
+    env: { ...process.env, PATH: envPath },
+    timeout: 5000,
+    windowsHide: true,
+  });
+
+  if (result.error || result.status !== 0 || !result.stdout) return null;
+
+  const candidates = result.stdout.split(/\r?\n/);
+  if (process.platform === "win32") {
+    return pickWindowsCommandCandidate(candidates);
+  }
+
+  const resolved = candidates
+    .map((candidate) => candidate.trim())
+    .find(Boolean);
+  return resolved ? { command: resolved, windowsScript: false } : null;
+}
+
+function resolveCommand(command: string, envPath: string): ResolvedCommand {
+  const resolved = resolveCommandOnPath(command, envPath);
+  if (resolved) return resolved;
+
+  return {
+    command,
+    windowsScript:
+      process.platform === "win32" && isWindowsCommandScript(command),
+  };
+}
+
+function quoteWindowsCmdArg(value: string): string {
+  return `"${value.replace(/"/g, '\\"')}"`;
+}
+
+export function buildWindowsScriptCommandLine(
+  command: string,
+  args: string[],
+): string {
+  const parts = [quoteWindowsCmdArg(command), ...args.map(quoteWindowsCmdArg)];
+  return `"${parts.join(" ")}"`;
+}
+
+function createCommandInvocation(
+  resolved: ResolvedCommand,
+  args: string[],
+): CommandInvocation {
+  if (resolved.windowsScript) {
+    return {
+      command: process.env.ComSpec || "cmd.exe",
+      args: [
+        "/d",
+        "/s",
+        "/c",
+        buildWindowsScriptCommandLine(resolved.command, args),
+      ],
+      windowsVerbatimArguments: true,
+    };
+  }
+
+  return { command: resolved.command, args };
+}
+
+function createWindowsNpmCliInvocation(
+  npmCommand: string,
+  args: string[],
+  fileExists: (path: string) => boolean,
+): CommandInvocation | null {
+  const npmDir = win32.dirname(npmCommand);
+  const nodeCandidates = [
+    win32.join(npmDir, "node.exe"),
+    win32.join(npmDir, "..", "..", "..", "node.exe"),
+  ];
+  const npmCliCandidates = [
+    win32.join(npmDir, "node_modules", "npm", "bin", "npm-cli.js"),
+    win32.join(npmDir, "npm-cli.js"),
+  ];
+
+  const nodeExe = nodeCandidates.find(fileExists);
+  const npmCli = npmCliCandidates.find(fileExists);
+  if (!npmCli) return null;
+
+  return {
+    command: nodeExe || "node",
+    args: [npmCli, ...args],
+  };
+}
+
+export function createNpmCommandInvocation(
+  resolved: ResolvedCommand,
+  args: string[],
+  options: NpmInvocationOptions = {},
+): CommandInvocation {
+  const platform = options.platform ?? process.platform;
+  const fileExists = options.fileExists ?? existsSync;
+
+  if (platform === "win32") {
+    const directNpm = createWindowsNpmCliInvocation(
+      resolved.command,
+      args,
+      fileExists,
+    );
+    if (directNpm) return directNpm;
+  }
+
+  return createCommandInvocation(resolved, args);
+}
+
+export function createClaw3dScriptInvocation(
+  script: Claw3dScript,
+  nodeCommand = "node",
+): CommandInvocation {
+  return {
+    command: nodeCommand,
+    args: CLAW3D_SCRIPT_ARGS[script],
+  };
+}
 
 function getSavedPort(): number {
   try {
@@ -68,11 +240,55 @@ export function getClaw3dWsUrl(): string {
 }
 
 /**
+ * The model Hermes Office should default to. Office runs against the same
+ * gateway as the desktop chat, so it should use the same configured model
+ * rather than a generic `hermes` agent the user never selected (issue
+ * #256). Falls back to `hermes` only when no model is configured.
+ */
+function resolveOfficeModel(): string {
+  try {
+    const model = getModelConfig().model?.trim();
+    if (model) return model;
+  } catch {
+    /* no model configured — fall through to the default */
+  }
+  return "hermes";
+}
+
+/**
+ * Build the `.env` Hermes Desktop writes into the hermes-office directory.
+ * Exported so the contents (notably `HERMES_MODEL`, issue #256) can be
+ * unit tested without a live Office install.
+ */
+export function buildOfficeEnv(opts: {
+  port: number;
+  url: string;
+  apiKey: string;
+  model: string;
+}): string {
+  return [
+    "# Auto-configured by Hermes Desktop",
+    `PORT=${opts.port}`,
+    `HOST=127.0.0.1`,
+    `NEXT_PUBLIC_GATEWAY_URL=${opts.url}`,
+    `CLAW3D_GATEWAY_URL=${opts.url}`,
+    `CLAW3D_GATEWAY_TOKEN=${opts.apiKey}`,
+    `HERMES_API_KEY=${opts.apiKey}`,
+    `HERMES_ADAPTER_PORT=18789`,
+    `HERMES_MODEL=${opts.model || "hermes"}`,
+    `HERMES_AGENT_NAME=Hermes`,
+    "",
+  ].join("\n");
+}
+
+/**
  * Write Claw3D settings to ~/.openclaw/claw3d/settings.json
  * and .env in the claw3d directory so onboarding is skipped.
  */
 function writeClaw3dSettings(wsUrl?: string): void {
   const url = wsUrl || getSavedWsUrl();
+  // Gateway bearer token — empty string when the gateway has no API_SERVER_KEY.
+  const apiKey = getApiServerKey();
 
   // Write ~/.openclaw/claw3d/settings.json
   try {
@@ -91,7 +307,7 @@ function writeClaw3dSettings(wsUrl?: string): void {
       ...existing,
       adapter: "hermes",
       url,
-      token: "",
+      token: apiKey,
     };
     safeWriteFile(settingsPath, JSON.stringify(settings, null, 2));
   } catch {
@@ -102,20 +318,15 @@ function writeClaw3dSettings(wsUrl?: string): void {
   try {
     if (existsSync(HERMES_OFFICE_DIR)) {
       const envPath = join(HERMES_OFFICE_DIR, ".env");
-      const port = getSavedPort();
-      const envContent = [
-        "# Auto-configured by Hermes Desktop",
-        `PORT=${port}`,
-        `HOST=127.0.0.1`,
-        `NEXT_PUBLIC_GATEWAY_URL=${url}`,
-        `CLAW3D_GATEWAY_URL=${url}`,
-        `CLAW3D_GATEWAY_TOKEN=`,
-        `HERMES_ADAPTER_PORT=18789`,
-        `HERMES_MODEL=hermes`,
-        `HERMES_AGENT_NAME=Hermes`,
-        "",
-      ].join("\n");
-      safeWriteFile(envPath, envContent);
+      safeWriteFile(
+        envPath,
+        buildOfficeEnv({
+          port: getSavedPort(),
+          url,
+          apiKey,
+          model: resolveOfficeModel(),
+        }),
+      );
     }
   } catch {
     /* non-fatal */
@@ -151,6 +362,12 @@ export interface Claw3dStatus {
   portInUse: boolean;
   wsUrl: string;
   error: string; // last error from either process
+  // Populated in SSH tunnel mode when a Claw3D / hermes-office service is
+  // running on the remote host. Renderer should prefer this over launching
+  // a local dev server. Null/undefined when not in SSH mode or when the
+  // remote service is unreachable.
+  remoteUrl?: string | null;
+  remoteSource?: "ssh" | null;
 }
 
 export interface Claw3dSetupProgress {
@@ -207,6 +424,29 @@ function isAdapterRunning(): boolean {
   return false;
 }
 
+// Probe an HTTP endpoint with a short timeout. Returns true if any response
+// arrives (we don't care about the status code — even a 404 confirms a
+// listener). Used to detect remote Claw3D / hermes-office without dragging
+// in the SSH tunnel machinery.
+function probeHttp(url: string, timeoutMs = 1500): Promise<boolean> {
+  return new Promise((resolve) => {
+    const req = http.request(
+      url,
+      { method: "GET", timeout: timeoutMs },
+      (res) => {
+        res.resume();
+        resolve(true);
+      },
+    );
+    req.on("error", () => resolve(false));
+    req.on("timeout", () => {
+      req.destroy();
+      resolve(false);
+    });
+    req.end();
+  });
+}
+
 export async function getClaw3dStatus(): Promise<Claw3dStatus> {
   const cloned = existsSync(join(HERMES_OFFICE_DIR, "package.json"));
   const installed = existsSync(join(HERMES_OFFICE_DIR, "node_modules"));
@@ -216,36 +456,74 @@ export async function getClaw3dStatus(): Promise<Claw3dStatus> {
   const portInUse = devRunning ? false : await checkPort(port);
   const adapterUp = isAdapterRunning();
   const error = devServerError || adapterError;
+
+  // SSH tunnel mode: probe the remote host for a Claw3D / hermes-office
+  // service. The official systemd unit binds Next.js to :3000 by default,
+  // so we try the SSH host at the saved Claw3D port. When reachable, the
+  // renderer can point its webview at it instead of asking the user to
+  // install Claw3D locally.
+  let remoteUrl: string | null = null;
+  const conn = getConnectionConfig();
+  if (conn.mode === "ssh" && conn.ssh?.host) {
+    const candidateUrl = `http://${conn.ssh.host}:${port}`;
+    const reachable = await probeHttp(candidateUrl, 1500);
+    if (reachable) remoteUrl = candidateUrl;
+  }
+
   return {
     cloned,
-    installed,
+    installed: installed || Boolean(remoteUrl),
     devServerRunning: devRunning,
     adapterRunning: adapterUp,
-    running: devRunning && adapterUp,
+    running: (devRunning && adapterUp) || Boolean(remoteUrl),
     port,
     portInUse,
     wsUrl: getSavedWsUrl(),
     error,
+    remoteUrl,
+    remoteSource: remoteUrl ? "ssh" : null,
   };
 }
 
-let _cachedNpmPath: string | null = null;
+let _cachedNpmCommand: ResolvedCommand | null = null;
 
-function findNpm(): string {
-  if (_cachedNpmPath) return _cachedNpmPath;
+function findNpm(envPath = getEnhancedPath()): ResolvedCommand {
+  if (_cachedNpmCommand) return _cachedNpmCommand;
 
   const home = homedir();
 
+  if (process.platform === "win32") {
+    const resolved = resolveCommandOnPath("npm", envPath);
+    if (resolved) {
+      _cachedNpmCommand = resolved;
+      return resolved;
+    }
+  }
+
   // Try common locations first (no process spawn).
-  // Includes nvm, volta, fnm, and system paths.
+  // Includes nvm, nvm-windows, volta, fnm, and system paths.
   const candidates = [
+    ...(process.platform === "win32"
+      ? [
+          process.env.NVM_SYMLINK
+            ? join(process.env.NVM_SYMLINK, "npm.cmd")
+            : undefined,
+          join(home, "AppData", "Roaming", "npm", "npm.cmd"),
+          process.env.ProgramFiles
+            ? join(process.env.ProgramFiles, "nodejs", "npm.cmd")
+            : undefined,
+          process.env["ProgramFiles(x86)"]
+            ? join(process.env["ProgramFiles(x86)"], "nodejs", "npm.cmd")
+            : undefined,
+        ]
+      : []),
     join(home, ".volta", "bin", "npm"),
     join(home, ".asdf", "shims", "npm"),
     join(home, ".local", "share", "fnm", "aliases", "default", "bin", "npm"),
     join(home, ".fnm", "aliases", "default", "bin", "npm"),
     "/usr/local/bin/npm",
     "/opt/homebrew/bin/npm",
-  ];
+  ].filter((candidate): candidate is string => Boolean(candidate));
 
   // Discover nvm npm dynamically (active version)
   const nvmDir = process.env.NVM_DIR || join(home, ".nvm");
@@ -266,30 +544,26 @@ function findNpm(): string {
 
   for (const c of candidates) {
     if (existsSync(c)) {
-      _cachedNpmPath = c;
-      return c;
+      _cachedNpmCommand = {
+        command: c,
+        windowsScript:
+          process.platform === "win32" && isWindowsCommandScript(c),
+      };
+      return _cachedNpmCommand;
     }
   }
 
-  // Fallback: which/where (blocks main thread — only runs once)
-  try {
-    const npmPath = execSync("which npm 2>/dev/null || where npm 2>/dev/null", {
-      env: { ...process.env, PATH: getEnhancedPath() },
-      timeout: 5000,
-    })
-      .toString()
-      .trim()
-      .split("\n")[0];
-    if (npmPath && existsSync(npmPath)) {
-      _cachedNpmPath = npmPath;
-      return npmPath;
+  // Fallback path lookup only runs once because the result is cached.
+  if (process.platform !== "win32") {
+    const resolved = resolveCommandOnPath("npm", envPath);
+    if (resolved) {
+      _cachedNpmCommand = resolved;
+      return resolved;
     }
-  } catch {
-    /* fall through */
   }
 
-  _cachedNpmPath = "npm";
-  return "npm";
+  _cachedNpmCommand = resolveCommand("npm", envPath);
+  return _cachedNpmCommand;
 }
 
 export async function setupClaw3d(
@@ -315,6 +589,7 @@ export async function setupClaw3d(
     HOME: homedir(),
     TERM: "dumb",
   };
+  const git = resolveCommand("git", env.PATH);
 
   // Step 1: Clone (or pull if already cloned)
   const cloned = existsSync(join(HERMES_OFFICE_DIR, "package.json"));
@@ -322,15 +597,18 @@ export async function setupClaw3d(
   if (!cloned) {
     emit(1, "Cloning Claw3D repository...", "Cloning from GitHub...\n");
     await new Promise<void>((resolve, reject) => {
-      const proc = spawn(
-        "git",
-        ["clone", HERMES_OFFICE_REPO, HERMES_OFFICE_DIR],
-        {
-          cwd: homedir(),
-          env,
-          stdio: ["ignore", "pipe", "pipe"],
-        },
-      );
+      const gitClone = createCommandInvocation(git, [
+        "clone",
+        HERMES_OFFICE_REPO,
+        HERMES_OFFICE_DIR,
+      ]);
+      const proc = spawn(gitClone.command, gitClone.args, {
+        cwd: homedir(),
+        env,
+        stdio: ["ignore", "pipe", "pipe"],
+        windowsHide: true,
+        windowsVerbatimArguments: gitClone.windowsVerbatimArguments,
+      });
 
       proc.stdout?.on("data", (data: Buffer) => {
         emit(1, "Cloning Claw3D repository...", stripAnsi(data.toString()));
@@ -358,10 +636,13 @@ export async function setupClaw3d(
       "Repository already exists, pulling latest...\n",
     );
     await new Promise<void>((resolve) => {
-      const proc = spawn("git", ["pull", "--ff-only"], {
+      const gitPull = createCommandInvocation(git, ["pull", "--ff-only"]);
+      const proc = spawn(gitPull.command, gitPull.args, {
         cwd: HERMES_OFFICE_DIR,
         env,
         stdio: ["ignore", "pipe", "pipe"],
+        windowsHide: true,
+        windowsVerbatimArguments: gitPull.windowsVerbatimArguments,
       });
 
       proc.stdout?.on("data", (data: Buffer) => {
@@ -381,13 +662,15 @@ export async function setupClaw3d(
 
   // Step 2: npm install
   emit(2, "Installing dependencies...", "Running npm install...\n");
-  const npm = findNpm();
+  const npm = createNpmCommandInvocation(findNpm(env.PATH), ["install"]);
 
   await new Promise<void>((resolve, reject) => {
-    const proc = spawn(npm, ["install"], {
+    const proc = spawn(npm.command, npm.args, {
       cwd: HERMES_OFFICE_DIR,
       env,
       stdio: ["ignore", "pipe", "pipe"],
+      windowsHide: true,
+      windowsVerbatimArguments: npm.windowsVerbatimArguments,
     });
 
     proc.stdout?.on("data", (data: Buffer) => {
@@ -447,18 +730,23 @@ export function startDevServer(): boolean {
   devServerError = "";
   devServerLogs = "";
   const port = getSavedPort();
-  const npm = findNpm();
-  const proc = spawn(npm, ["run", "dev"], {
+  const env = {
+    ...process.env,
+    PATH: getEnhancedPath(),
+    HOME: homedir(),
+    TERM: "dumb",
+    HERMES_API_KEY: getApiServerKey(),
+    PORT: String(port),
+  };
+  const node = resolveCommand("node", env.PATH);
+  const devScript = createClaw3dScriptInvocation("dev", node.command);
+  const proc = spawn(devScript.command, devScript.args, {
     cwd: HERMES_OFFICE_DIR,
-    env: {
-      ...process.env,
-      PATH: getEnhancedPath(),
-      HOME: homedir(),
-      TERM: "dumb",
-      PORT: String(port),
-    },
+    env,
     stdio: ["ignore", "pipe", "pipe"],
     detached: true,
+    windowsHide: true,
+    windowsVerbatimArguments: devScript.windowsVerbatimArguments,
   });
 
   devServerProcess = proc;
@@ -522,17 +810,28 @@ export function startAdapter(): boolean {
 
   adapterError = "";
   adapterLogs = "";
-  const npm = findNpm();
-  const proc = spawn(npm, ["run", "hermes-adapter"], {
+  // The hermes-gateway-adapter authenticates to the Hermes gateway with
+  // `Authorization: Bearer ${HERMES_API_KEY}`. Without it, a gateway that
+  // has an API_SERVER_KEY configured rejects the Office chat with HTTP 401.
+  const env = {
+    ...process.env,
+    PATH: getEnhancedPath(),
+    HOME: homedir(),
+    TERM: "dumb",
+    HERMES_API_KEY: getApiServerKey(),
+  };
+  const node = resolveCommand("node", env.PATH);
+  const adapterScript = createClaw3dScriptInvocation(
+    "hermes-adapter",
+    node.command,
+  );
+  const proc = spawn(adapterScript.command, adapterScript.args, {
     cwd: HERMES_OFFICE_DIR,
-    env: {
-      ...process.env,
-      PATH: getEnhancedPath(),
-      HOME: homedir(),
-      TERM: "dumb",
-    },
+    env,
     stdio: ["ignore", "pipe", "pipe"],
     detached: true,
+    windowsHide: true,
+    windowsVerbatimArguments: adapterScript.windowsVerbatimArguments,
   });
 
   adapterProcess = proc;
@@ -597,6 +896,11 @@ export function startAll(): { success: boolean; error?: string } {
   }
 
   const port = getSavedPort();
+
+  // Refresh the `.env` before the processes read it, so Office always
+  // starts against the current port/URL and the desktop's configured
+  // model rather than a value frozen at first setup (issue #256).
+  writeClaw3dSettings();
 
   // Start dev server
   const devOk = startDevServer();
