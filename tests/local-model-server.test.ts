@@ -1,11 +1,27 @@
 import { describe, expect, it } from "vitest";
+import http from "http";
+import type { AddressInfo } from "net";
 import {
   buildLlamaServerArgs,
+  findAvailableLocalModelPort,
+  isLocalModelServerHealthy,
   isDiscoveredLocalModelPath,
   isLaunchableLocalModel,
   resolveLlamaServerCommand,
   waitForLocalModelServerReady,
 } from "../src/main/local-model-server";
+
+function listen(server: http.Server): Promise<number> {
+  return new Promise((resolve) => {
+    server.listen(0, "127.0.0.1", () => {
+      resolve((server.address() as AddressInfo).port);
+    });
+  });
+}
+
+function close(server: http.Server): Promise<void> {
+  return new Promise((resolve) => server.close(() => resolve()));
+}
 
 describe("local model server launcher helpers", () => {
   it("only auto-launches GGUF local file models", () => {
@@ -83,5 +99,48 @@ describe("local model server launcher helpers", () => {
 
     expect(ready).toBe(false);
     expect(attempts).toBeGreaterThanOrEqual(1);
+  });
+
+  it("picks the first available local model port when the default is occupied", async () => {
+    const selected = await findAvailableLocalModelPort({
+      startPort: 8080,
+      endPort: 8083,
+      isPortAvailable: async (port) => port === 8082,
+    });
+
+    expect(selected).toBe(8082);
+  });
+
+  it("does not treat an arbitrary 404 service as a healthy local model server", async () => {
+    const server = http.createServer((_req, res) => {
+      res.writeHead(404, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ code: "undefined_endpoint" }));
+    });
+    const port = await listen(server);
+
+    try {
+      await expect(isLocalModelServerHealthy(port)).resolves.toBe(false);
+    } finally {
+      await close(server);
+    }
+  });
+
+  it("accepts an OpenAI-compatible /v1/models response as healthy", async () => {
+    const server = http.createServer((req, res) => {
+      if (req.url === "/v1/models") {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ data: [{ id: "local-model" }] }));
+        return;
+      }
+      res.writeHead(404);
+      res.end();
+    });
+    const port = await listen(server);
+
+    try {
+      await expect(isLocalModelServerHealthy(port)).resolves.toBe(true);
+    } finally {
+      await close(server);
+    }
   });
 });

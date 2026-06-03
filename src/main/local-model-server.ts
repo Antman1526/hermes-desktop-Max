@@ -1,6 +1,7 @@
 import { ChildProcess, spawn, spawnSync } from "child_process";
 import { existsSync, readFileSync, unlinkSync } from "fs";
 import http from "http";
+import net from "net";
 import { extname, join } from "path";
 import { HERMES_HOME, getEnhancedPath } from "./installer";
 import {
@@ -15,10 +16,12 @@ export const LOCAL_MODEL_SERVER_BASE_URL = `http://localhost:${LOCAL_MODEL_SERVE
 
 const PID_FILE = join(HERMES_HOME, "local-model-server.pid");
 const MODEL_FILE = join(HERMES_HOME, "local-model-server-model");
+const PORT_FILE = join(HERMES_HOME, "local-model-server-port");
 const LLAMA_SERVER_CANDIDATES = [
   "/opt/homebrew/bin/llama-server",
   "/usr/local/bin/llama-server",
 ];
+const LOCAL_MODEL_SERVER_MAX_PORT = 8099;
 const SERVER_START_TIMEOUT_MS = 120_000;
 const SERVER_START_POLL_MS = 500;
 
@@ -107,8 +110,18 @@ function readModelPath(): string | null {
   }
 }
 
+function readPort(): number | null {
+  try {
+    if (!existsSync(PORT_FILE)) return null;
+    const port = parseInt(readFileSync(PORT_FILE, "utf-8").trim(), 10);
+    return Number.isInteger(port) && port > 0 ? port : null;
+  } catch {
+    return null;
+  }
+}
+
 function clearStateFiles(): void {
-  for (const file of [PID_FILE, MODEL_FILE]) {
+  for (const file of [PID_FILE, MODEL_FILE, PORT_FILE]) {
     try {
       if (existsSync(file)) unlinkSync(file);
     } catch {
@@ -117,14 +130,63 @@ function clearStateFiles(): void {
   }
 }
 
-function serverHealth(): Promise<boolean> {
+function baseUrlForPort(port: number): string {
+  return `http://localhost:${port}/v1`;
+}
+
+function isPortAvailable(port: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const server = net.createServer();
+    server.once("error", () => resolve(false));
+    server.once("listening", () => {
+      server.close(() => resolve(true));
+    });
+    server.listen(port, "127.0.0.1");
+  });
+}
+
+export async function findAvailableLocalModelPort({
+  startPort = LOCAL_MODEL_SERVER_PORT,
+  endPort = LOCAL_MODEL_SERVER_MAX_PORT,
+  isPortAvailable: checkPort = isPortAvailable,
+}: {
+  startPort?: number;
+  endPort?: number;
+  isPortAvailable?: (port: number) => Promise<boolean>;
+} = {}): Promise<number | null> {
+  for (let port = startPort; port <= endPort; port++) {
+    if (await checkPort(port)) return port;
+  }
+  return null;
+}
+
+export function isLocalModelServerHealthy(
+  port = LOCAL_MODEL_SERVER_PORT,
+): Promise<boolean> {
   return new Promise((resolve) => {
     const req = http.request(
-      `http://127.0.0.1:${LOCAL_MODEL_SERVER_PORT}/v1/models`,
+      `http://127.0.0.1:${port}/v1/models`,
       { method: "GET", timeout: 1500 },
       (res) => {
-        resolve(Boolean(res.statusCode && res.statusCode < 500));
-        res.resume();
+        if (res.statusCode !== 200) {
+          res.resume();
+          resolve(false);
+          return;
+        }
+
+        let body = "";
+        res.setEncoding("utf-8");
+        res.on("data", (chunk) => {
+          body += chunk;
+        });
+        res.on("end", () => {
+          try {
+            const parsed = JSON.parse(body) as { data?: unknown };
+            resolve(Array.isArray(parsed.data));
+          } catch {
+            resolve(false);
+          }
+        });
       },
     );
     req.on("error", () => resolve(false));
@@ -134,6 +196,10 @@ function serverHealth(): Promise<boolean> {
     });
     req.end();
   });
+}
+
+function serverHealth(port = LOCAL_MODEL_SERVER_PORT): Promise<boolean> {
+  return isLocalModelServerHealthy(port);
 }
 
 export async function waitForLocalModelServerReady({
@@ -157,8 +223,9 @@ export async function getLocalModelServerStatus(): Promise<LocalModelServerStatu
   const launcherPath = resolveLlamaServerCommand();
   const launcherAvailable = commandAvailable(launcherPath);
   const pid = readPid();
+  const port = readPort() ?? LOCAL_MODEL_SERVER_PORT;
   const managed = Boolean(pid && pidIsAlive(pid));
-  const running = await serverHealth();
+  const running = await serverHealth(port);
   if (pid && !managed && !running) clearStateFiles();
 
   return {
@@ -167,7 +234,7 @@ export async function getLocalModelServerStatus(): Promise<LocalModelServerStatu
     launcherAvailable,
     launcherPath: launcherAvailable ? launcherPath : null,
     modelPath: managed ? readModelPath() : null,
-    baseUrl: LOCAL_MODEL_SERVER_BASE_URL,
+    baseUrl: baseUrlForPort(port),
     pid: managed ? pid : null,
   };
 }
@@ -210,7 +277,15 @@ export async function startLocalModelServer(
     };
   }
 
-  localModelProcess = spawn(command, buildLlamaServerArgs(modelPath), {
+  const port = await findAvailableLocalModelPort();
+  if (!port) {
+    return {
+      ...current,
+      error: "No free local model server port was found between 8080 and 8099.",
+    };
+  }
+
+  localModelProcess = spawn(command, buildLlamaServerArgs(modelPath, port), {
     env: { ...process.env, PATH: getEnhancedPath() },
     detached: process.platform !== "win32",
     stdio: "ignore",
@@ -221,9 +296,12 @@ export async function startLocalModelServer(
   if (localModelProcess.pid) {
     safeWriteFile(PID_FILE, String(localModelProcess.pid));
     safeWriteFile(MODEL_FILE, modelPath);
+    safeWriteFile(PORT_FILE, String(port));
   }
 
-  const ready = await waitForLocalModelServerReady();
+  const ready = await waitForLocalModelServerReady({
+    healthCheck: () => serverHealth(port),
+  });
   const next = await getLocalModelServerStatus();
   return ready
     ? next

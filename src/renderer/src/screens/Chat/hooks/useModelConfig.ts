@@ -91,12 +91,13 @@ export function useModelConfig(profile?: string): UseModelConfigResult {
       // endpoint) would route the request to the wrong host.  Drop the
       // baseUrl whenever the entry isn't `custom`; the gateway falls back
       // to the provider's canonical URL.
-      const effectiveBaseUrl = provider === "custom" ? baseUrl : "";
+      let effectiveBaseUrl = provider === "custom" ? baseUrl : "";
       if (options?.launchable && options.modelPath) {
         const status = await window.hermesAPI.startLocalModelServer(
           options.modelPath,
         );
         if (status.error) throw new Error(status.error);
+        effectiveBaseUrl = status.baseUrl;
       }
       await window.hermesAPI.setModelConfig(
         provider,
