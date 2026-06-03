@@ -1,6 +1,6 @@
 # 06 - Authentication and Authorization System
 
-Generated from repository state on 2026-06-02. No secrets are included; environment-variable names are documented without values.
+Generated from repository state on 2026-06-03. No secrets are included; environment-variable names are documented without values.
 
 ## Trust Boundaries
 
@@ -16,7 +16,7 @@ The renderer receives `hasApiKey` and `apiKeyLength`, not the actual remote API 
 
 ```ts
   65 | }
-  66 | 
+  66 |
   67 | export function getConnectionConfig(): ConnectionConfig {
   68 |   const data = readDesktopConfig();
   69 |   const ssh = (data.sshConfig as Partial<SshConnectionConfig>) ?? {};
@@ -34,7 +34,7 @@ The renderer receives `hasApiKey` and `apiKeyLength`, not the actual remote API 
   81 |     },
   82 |   };
   83 | }
-  84 | 
+  84 |
   85 | export function getPublicConnectionConfig(): PublicConnectionConfig {
   86 |   const config = getConnectionConfig();
   87 |   return {
@@ -52,7 +52,7 @@ Main exposes `get-api-server-key-status` and `generate-api-server-key`. The key 
  648 |     const key = getApiServerKey(profile);
  649 |     return { hasKey: key.length > 0 };
  650 |   });
- 651 | 
+ 651 |
  652 |   ipcMain.handle(
  653 |     "generate-api-server-key",
  654 |     async (_event, profile?: string) => {
@@ -74,18 +74,18 @@ Main exposes `get-api-server-key-status` and `generate-api-server-key`. The key 
  670 |       return { key };
  671 |     },
  672 |   );
- 673 | 
+ 673 |
  674 |   // Connection mode (local / remote / ssh)
 ```
 
 ## Remote Authorization Header
 
 ```ts
-  91 | 
+  91 |
   92 | export function setSshRemoteApiKey(key: string): void {
   93 |   _sshRemoteApiKey = key;
   94 | }
-  95 | 
+  95 |
   96 | export function getRemoteAuthHeader(): Record<string, string> {
   97 |   const conn = getConnectionConfig();
   98 |   if (conn.mode === "ssh") {
@@ -98,10 +98,10 @@ Main exposes `get-api-server-key-status` and `generate-api-server-key`. The key 
  105 |   }
  106 |   return {};
  107 | }
- 108 | 
+ 108 |
  109 | function resolveRemoteApiKey(url: string, apiKey?: string): string {
  110 |   if (apiKey !== undefined) return apiKey;
- 111 | 
+ 111 |
  112 |   const conn = getConnectionConfig();
  113 |   if (conn.mode !== "remote" || !conn.apiKey || !conn.remoteUrl) return "";
  114 |   if (normaliseRemoteUrl(conn.remoteUrl) !== normaliseRemoteUrl(url)) {
@@ -109,7 +109,7 @@ Main exposes `get-api-server-key-status` and `generate-api-server-key`. The key 
  116 |   }
  117 |   return conn.apiKey;
  118 | }
- 119 | 
+ 119 |
  120 | export async function ensureSshTunnelIfNeeded(): Promise<void> {
  121 |   const conn = getConnectionConfig();
  122 |   if (
@@ -143,7 +143,7 @@ Provider keys are inferred from provider IDs and base URL patterns. Local/custom
  166 |   "cerebras",
  167 |   "mistral",
  168 | ]);
- 169 | 
+ 169 |
  170 | // Map base-URL patterns to the API key env var they need
  171 | const URL_KEY_MAP: Array<{ pattern: RegExp; envKey: string }> = [
  172 |   { pattern: /openrouter\.ai/i, envKey: "OPENROUTER_API_KEY" },

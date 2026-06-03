@@ -1,6 +1,6 @@
 # 14 - Security Implementation and Best Practices
 
-Generated from repository state on 2026-06-02. No secrets are included; environment-variable names are documented without values.
+Generated from repository state on 2026-06-03. No secrets are included; environment-variable names are documented without values.
 
 ## Electron Hardening
 
@@ -9,14 +9,14 @@ Security-critical renderer operations are isolated behind preload. External navi
 ```ts
    1 | import type { WebContents, WebPreferences } from "electron";
    2 | import { pathToFileURL } from "url";
-   3 | 
+   3 |
    4 | const EXTERNAL_PROTOCOLS = new Set(["https:", "http:", "mailto:"]);
    5 | const LOCAL_WEBVIEW_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
-   6 | 
+   6 |
    7 | type WebviewPreferences = WebPreferences & {
    8 |   preloadURL?: string;
    9 | };
-  10 | 
+  10 |
   11 | function parseUrl(rawUrl: unknown): URL | null {
   12 |   if (typeof rawUrl !== "string") return null;
   13 |   try {
@@ -25,12 +25,12 @@ Security-critical renderer operations are isolated behind preload. External navi
   16 |     return null;
   17 |   }
   18 | }
-  19 | 
+  19 |
   20 | export function isAllowedExternalUrl(rawUrl: unknown): rawUrl is string {
   21 |   const url = parseUrl(rawUrl);
   22 |   return !!url && EXTERNAL_PROTOCOLS.has(url.protocol);
   23 | }
-  24 | 
+  24 |
   25 | export function isAllowedAppNavigationUrl(
   26 |   rawUrl: unknown,
   27 |   rendererHtmlPath: string,
@@ -38,27 +38,27 @@ Security-critical renderer operations are isolated behind preload. External navi
   29 | ): rawUrl is string {
   30 |   const url = parseUrl(rawUrl);
   31 |   if (!url) return false;
-  32 | 
+  32 |
   33 |   const devServer = parseUrl(devServerUrl);
   34 |   if (devServer) {
   35 |     return url.origin === devServer.origin;
   36 |   }
-  37 | 
+  37 |
   38 |   const rendererUrl = pathToFileURL(rendererHtmlPath);
   39 |   return (
   40 |     url.protocol === "file:" && url.href.split("#")[0] === rendererUrl.href
   41 |   );
   42 | }
-  43 | 
+  43 |
   44 | export function isAllowedWebviewUrl(rawUrl: unknown): rawUrl is string {
   45 |   const url = parseUrl(rawUrl);
   46 |   if (!url || url.protocol !== "http:") return false;
   47 |   if (!LOCAL_WEBVIEW_HOSTS.has(url.hostname)) return false;
-  48 | 
+  48 |
   49 |   const port = Number(url.port);
   50 |   return Number.isInteger(port) && port >= 1024 && port <= 65535;
   51 | }
-  52 | 
+  52 |
   53 | export function hardenWebviewPreferences(
   54 |   webPreferences: WebviewPreferences,
   55 | ): void {
@@ -70,7 +70,7 @@ Security-critical renderer operations are isolated behind preload. External navi
   61 |   webPreferences.webSecurity = true;
   62 |   webPreferences.allowRunningInsecureContent = false;
   63 | }
-  64 | 
+  64 |
   65 | export function hardenAttachedWebContents(webContents: WebContents): void {
   66 |   webContents.setWindowOpenHandler(() => ({ action: "deny" }));
   67 |   webContents.on("will-navigate", (event, url) => {
@@ -97,26 +97,26 @@ Renderer input enters privileged code through IPC only. Risk areas are channels 
  160 |     const eqIndex = trimmed.indexOf("=");
  161 |     const key = trimmed.substring(0, eqIndex).trim();
  162 |     let value = trimmed.substring(eqIndex + 1).trim();
- 163 | 
+ 163 |
  164 |     if (
  165 |       (value.startsWith('"') && value.endsWith('"')) ||
  166 |       (value.startsWith("'") && value.endsWith("'"))
  167 |     ) {
  168 |       value = value.slice(1, -1);
  169 |     }
- 170 | 
+ 170 |
  171 |     result[key] = value;
  172 |   }
- 173 | 
+ 173 |
  174 |   setCache(cacheKey, result);
  175 |   return result;
  176 | }
- 177 | 
+ 177 |
  178 | export function setEnvValue(
 ```
 
 ```ts
-  46 | 
+  46 |
   47 | export function normalizePaperclipUrl(input: string): string {
   48 |   const trimmed = input.trim();
   49 |   if (!trimmed) return DEFAULT_PAPERCLIP_URL;
@@ -140,34 +140,34 @@ Renderer input enters privileged code through IPC only. Risk areas are channels 
 The `llama-server` launcher rejects non-GGUF files and rejects paths outside discovered local model folders.
 
 ```ts
-  31 |   baseUrl: string;
-  32 |   pid: number | null;
-  33 |   error?: string;
-  34 | }
-  35 | 
-  36 | export function isLaunchableLocalModel(modelPath: string): boolean {
-  37 |   return extname(modelPath).toLowerCase() === ".gguf";
-  38 | }
-  39 | 
-  40 | export function isDiscoveredLocalModelPath(
-  41 |   modelPath: string,
-  42 |   files: Pick<LocalModelFile, "path" | "format">[] = discoverLocalModelFiles(),
-  43 | ): boolean {
-  44 |   return files.some(
-  45 |     (file) => file.path === modelPath && file.format === "gguf",
-  46 |   );
-  47 | }
-  48 | 
-  49 | export function buildLlamaServerArgs(
-  50 |   modelPath: string,
-  51 |   port = LOCAL_MODEL_SERVER_PORT,
-  52 | ): string[] {
-  53 |   return [
-  54 |     "--model",
-  55 |     modelPath,
-  56 |     "--host",
-  57 |     "127.0.0.1",
-  58 |     "--port",
+  31 |   launcherPath: string | null;
+  32 |   modelPath: string | null;
+  33 |   baseUrl: string;
+  34 |   pid: number | null;
+  35 |   error?: string;
+  36 | }
+  37 |
+  38 | export function isLaunchableLocalModel(modelPath: string): boolean {
+  39 |   return extname(modelPath).toLowerCase() === ".gguf";
+  40 | }
+  41 |
+  42 | export function isDiscoveredLocalModelPath(
+  43 |   modelPath: string,
+  44 |   files: Pick<LocalModelFile, "path" | "format">[] = discoverLocalModelFiles(),
+  45 | ): boolean {
+  46 |   return files.some(
+  47 |     (file) => file.path === modelPath && file.format === "gguf",
+  48 |   );
+  49 | }
+  50 |
+  51 | export function buildLlamaServerArgs(
+  52 |   modelPath: string,
+  53 |   port = LOCAL_MODEL_SERVER_PORT,
+  54 | ): string[] {
+  55 |   return [
+  56 |     "--model",
+  57 |     modelPath,
+  58 |     "--host",
 ```
 
 ## Current Security Trade-Offs

@@ -1,6 +1,6 @@
 # 12 - Error Handling and Logging
 
-Generated from repository state on 2026-06-02. No secrets are included; environment-variable names are documented without values.
+Generated from repository state on 2026-06-03. No secrets are included; environment-variable names are documented without values.
 
 ## Error Handling Patterns
 
@@ -45,7 +45,7 @@ The project uses pragmatic error handling:
 ```ts
   47 |   return join(HERMES_HOME, "desktop.json");
   48 | }
-  49 | 
+  49 |
   50 | export function readDesktopConfig(): Record<string, unknown> {
   51 |   try {
   52 |     const f = desktopConfigFile();
@@ -55,7 +55,7 @@ The project uses pragmatic error handling:
   56 |     return {};
   57 |   }
   58 | }
-  59 | 
+  59 |
   60 | export function writeDesktopConfig(data: Record<string, unknown>): void {
   61 |   if (!existsSync(HERMES_HOME)) {
   62 |     mkdirSync(HERMES_HOME, { recursive: true });
@@ -68,7 +68,7 @@ The project uses pragmatic error handling:
 ```ts
  168 |   return { available: false, detail: null };
  169 | }
- 170 | 
+ 170 |
  171 | export async function getPaperclipStatus(): Promise<PaperclipStatus> {
  172 |   const config = getPaperclipConfig();
  173 |   const [healthy, launcher] = await Promise.all([
@@ -76,7 +76,7 @@ The project uses pragmatic error handling:
  175 |     getLauncherInfo(),
  176 |   ]);
  177 |   const managed = Boolean(paperclipProcess && !paperclipProcess.killed);
- 178 | 
+ 178 |
  179 |   return {
  180 |     serverUrl: config.serverUrl,
  181 |     running: healthy,
@@ -86,7 +86,7 @@ The project uses pragmatic error handling:
  185 |     health: healthy ? "ok" : "unreachable",
  186 |   };
  187 | }
- 188 | 
+ 188 |
  189 | export async function startPaperclip(): Promise<{
  190 |   success: boolean;
  191 |   error?: string;
@@ -100,7 +100,7 @@ The project uses pragmatic error handling:
  199 |         "Paperclip launcher not found. Install Node.js/npm so npx is available.",
  200 |     };
  201 |   }
- 202 | 
+ 202 |
  203 |   const config = getPaperclipConfig();
  204 |   const env: NodeJS.ProcessEnv = {
  205 |     ...process.env,
@@ -110,7 +110,7 @@ The project uses pragmatic error handling:
  209 |     env.PAPERCLIP_TELEMETRY_DISABLED = "1";
  210 |     env.DO_NOT_TRACK = "1";
  211 |   }
- 212 | 
+ 212 |
  213 |   paperclipProcess = spawn("npx", ["paperclipai", "run"], {
  214 |     env,
  215 |     stdio: "ignore",

@@ -1,6 +1,6 @@
 # 15 - File Structure and Code Organization
 
-Generated from repository state on 2026-06-02. No secrets are included; environment-variable names are documented without values.
+Generated from repository state on 2026-06-03. No secrets are included; environment-variable names are documented without values.
 
 ## Top-Level Structure
 

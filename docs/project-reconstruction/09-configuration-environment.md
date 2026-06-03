@@ -1,6 +1,6 @@
 # 09 - Configuration and Environment Variables
 
-Generated from repository state on 2026-06-02. No secrets are included; environment-variable names are documented without values.
+Generated from repository state on 2026-06-03. No secrets are included; environment-variable names are documented without values.
 
 ## Configuration Files
 
@@ -115,14 +115,14 @@ publish:
   22 |   remotePort: number;
   23 |   localPort: number;
   24 | }
-  25 | 
+  25 |
   26 | export interface ConnectionConfig {
   27 |   mode: "local" | "remote" | "ssh";
   28 |   remoteUrl: string;
   29 |   apiKey: string;
   30 |   ssh: SshConnectionConfig;
   31 | }
-  32 | 
+  32 |
   33 | export interface PublicConnectionConfig {
   34 |   mode: "local" | "remote" | "ssh";
   35 |   remoteUrl: string;
@@ -133,13 +133,13 @@ publish:
   40 |   apiKeyLength: number;
   41 |   ssh: SshConnectionConfig;
   42 | }
-  43 | 
+  43 |
   44 | // Lazy getter — avoids circular dependency with installer.ts
   45 | // (HERMES_HOME may not be assigned yet when this module first loads)
   46 | function desktopConfigFile(): string {
   47 |   return join(HERMES_HOME, "desktop.json");
   48 | }
-  49 | 
+  49 |
   50 | export function readDesktopConfig(): Record<string, unknown> {
   51 |   try {
   52 |     const f = desktopConfigFile();
@@ -149,7 +149,7 @@ publish:
   56 |     return {};
   57 |   }
   58 | }
-  59 | 
+  59 |
   60 | export function writeDesktopConfig(data: Record<string, unknown>): void {
   61 |   if (!existsSync(HERMES_HOME)) {
   62 |     mkdirSync(HERMES_HOME, { recursive: true });
@@ -189,12 +189,12 @@ Environment keys must match `/^[A-Za-z_][A-Za-z0-9_]*$/` and values must be sing
  116 |   }
  117 |   return "";
  118 | }
- 119 | 
+ 119 |
  120 | // ── In-memory cache with TTL ─────────────────────────────
  121 | const CACHE_TTL = 5000; // 5 seconds
  122 | const _cache = new Map<string, { data: unknown; ts: number }>();
  123 | const ENV_KEY_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
- 124 | 
+ 124 |
  125 | function getCached<T>(key: string): T | undefined {
  126 |   const entry = _cache.get(key);
  127 |   if (!entry) return undefined;
@@ -204,50 +204,50 @@ Environment keys must match `/^[A-Za-z_][A-Za-z0-9_]*$/` and values must be sing
  131 |   }
  132 |   return entry.data as T;
  133 | }
- 134 | 
+ 134 |
  135 | function setCache(key: string, data: unknown): void {
  136 |   _cache.set(key, { data, ts: Date.now() });
  137 | }
- 138 | 
+ 138 |
  139 | function invalidateCache(prefix: string): void {
  140 |   for (const key of _cache.keys()) {
  141 |     if (key.startsWith(prefix)) _cache.delete(key);
  142 |   }
  143 | }
- 144 | 
+ 144 |
  145 | export function readEnv(profile?: string): Record<string, string> {
  146 |   const cacheKey = `env:${profile || "default"}`;
  147 |   const cached = getCached<Record<string, string>>(cacheKey);
  148 |   if (cached) return cached;
- 149 | 
+ 149 |
  150 |   const { envFile } = profilePaths(profile);
  151 |   if (!existsSync(envFile)) return {};
- 152 | 
+ 152 |
  153 |   const content = readFileSync(envFile, "utf-8");
  154 |   const result: Record<string, string> = {};
- 155 | 
+ 155 |
  156 |   for (const line of content.split("\n")) {
  157 |     const trimmed = line.trim();
  158 |     if (trimmed.startsWith("#") || !trimmed.includes("=")) continue;
- 159 | 
+ 159 |
  160 |     const eqIndex = trimmed.indexOf("=");
  161 |     const key = trimmed.substring(0, eqIndex).trim();
  162 |     let value = trimmed.substring(eqIndex + 1).trim();
- 163 | 
+ 163 |
  164 |     if (
  165 |       (value.startsWith('"') && value.endsWith('"')) ||
  166 |       (value.startsWith("'") && value.endsWith("'"))
  167 |     ) {
  168 |       value = value.slice(1, -1);
  169 |     }
- 170 | 
+ 170 |
  171 |     result[key] = value;
  172 |   }
- 173 | 
+ 173 |
  174 |   setCache(cacheKey, result);
  175 |   return result;
  176 | }
- 177 | 
+ 177 |
  178 | export function setEnvValue(
 ```
 

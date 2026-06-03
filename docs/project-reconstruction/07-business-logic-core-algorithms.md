@@ -1,6 +1,6 @@
 # 07 - Business Logic and Core Algorithms
 
-Generated from repository state on 2026-06-02. No secrets are included; environment-variable names are documented without values.
+Generated from repository state on 2026-06-03. No secrets are included; environment-variable names are documented without values.
 
 ## Install and Runtime Orchestration
 
@@ -27,9 +27,9 @@ URL normalization:
   40 | import { readModels } from "./models";
   41 | import { HIDDEN_SUBPROCESS_OPTIONS } from "./process-options";
   42 | import { type Attachment, escapeXmlAttr } from "../shared/attachments";
-  43 | 
+  43 |
   44 | const LOCAL_API_URL = "http://127.0.0.1:8642";
-  45 | 
+  45 |
   46 | /**
   47 |  * Normalise a remote-mode URL the user typed into the connection
   48 |  * settings.  Strips trailing slashes and, importantly, a trailing
@@ -50,37 +50,37 @@ The fork scans the two configured roots recursively, ignores macOS AppleDouble `
    3 | import { basename, extname, join } from "path";
    4 | import { homedir } from "os";
    5 | import type { SavedModel } from "./models";
-   6 | 
+   6 |
    7 | export const LOCAL_MODEL_ROOTS = [
    8 |   "/Volumes/MainStore/Development/AI_Models",
    9 |   join(homedir(), "Desktop", "AI_Models"),
   10 | ];
-  11 | 
+  11 |
   12 | export interface LocalModelFile {
   13 |   path: string;
   14 |   root: string;
   15 |   format: "gguf" | "safetensors";
   16 | }
-  17 | 
+  17 |
   18 | const SUPPORTED_FORMATS = new Set([".gguf", ".safetensors"]);
   19 | const DEFAULT_LOCAL_BASE_URL = "http://localhost:8080/v1";
-  20 | 
+  20 |
   21 | function modelNameFromPath(path: string): string {
   22 |   const withoutExt = basename(path, extname(path));
   23 |   return (
   24 |     "Local " + withoutExt.replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim()
   25 |   );
   26 | }
-  27 | 
+  27 |
   28 | function stableLocalModelId(path: string): string {
   29 |   return `local-file-${createHash("sha1").update(path).digest("hex").slice(0, 16)}`;
   30 | }
-  31 | 
+  31 |
   32 | export function discoverLocalModelFiles(
   33 |   roots: string[] = LOCAL_MODEL_ROOTS,
   34 | ): LocalModelFile[] {
   35 |   const found: LocalModelFile[] = [];
-  36 | 
+  36 |
   37 |   function visit(root: string, dir: string): void {
   38 |     let entries;
   39 |     try {
@@ -90,7 +90,7 @@ The fork scans the two configured roots recursively, ignores macOS AppleDouble `
   43 |     } catch {
   44 |       return;
   45 |     }
-  46 | 
+  46 |
   47 |     for (const entry of entries) {
   48 |       if (entry.name.startsWith("._")) continue;
   49 |       const entryPath = join(dir, entry.name);
@@ -99,7 +99,7 @@ The fork scans the two configured roots recursively, ignores macOS AppleDouble `
   52 |         continue;
   53 |       }
   54 |       if (!entry.isFile()) continue;
-  55 | 
+  55 |
   56 |       const ext = extname(entry.name).toLowerCase();
   57 |       if (!SUPPORTED_FORMATS.has(ext)) continue;
   58 |       found.push({
@@ -109,14 +109,14 @@ The fork scans the two configured roots recursively, ignores macOS AppleDouble `
   62 |       });
   63 |     }
   64 |   }
-  65 | 
+  65 |
   66 |   for (const root of roots) {
   67 |     if (existsSync(root)) visit(root, root);
   68 |   }
-  69 | 
+  69 |
   70 |   return found;
   71 | }
-  72 | 
+  72 |
   73 | export function buildLocalModelEntries(files: LocalModelFile[]): SavedModel[] {
   74 |   return files.map((file) => ({
   75 |     id: stableLocalModelId(file.path),
@@ -130,90 +130,90 @@ The fork scans the two configured roots recursively, ignores macOS AppleDouble `
 The launcher only starts a `.gguf` file that was discovered under the configured roots. It writes PID and model state files under `HERMES_HOME`, checks health at `http://127.0.0.1:8080/v1/models`, and uses `llama-server` from Homebrew, `/usr/local/bin`, or PATH.
 
 ```ts
- 126 |       },
- 127 |     );
- 128 |     req.on("error", () => resolve(false));
- 129 |     req.on("timeout", () => {
- 130 |       req.destroy();
- 131 |       resolve(false);
- 132 |     });
- 133 |     req.end();
- 134 |   });
- 135 | }
- 136 | 
- 137 | export async function getLocalModelServerStatus(): Promise<LocalModelServerStatus> {
- 138 |   const launcherPath = resolveLlamaServerCommand();
- 139 |   const launcherAvailable = commandAvailable(launcherPath);
- 140 |   const pid = readPid();
- 141 |   const managed = Boolean(pid && pidIsAlive(pid));
- 142 |   const running = managed || (await serverHealth());
- 143 |   if (pid && !managed && !(await serverHealth())) clearStateFiles();
- 144 | 
- 145 |   return {
- 146 |     running,
- 147 |     managed,
- 148 |     launcherAvailable,
- 149 |     launcherPath: launcherAvailable ? launcherPath : null,
- 150 |     modelPath: managed ? readModelPath() : null,
- 151 |     baseUrl: LOCAL_MODEL_SERVER_BASE_URL,
- 152 |     pid: managed ? pid : null,
- 153 |   };
+ 126 |         resolve(Boolean(res.statusCode && res.statusCode < 500));
+ 127 |         res.resume();
+ 128 |       },
+ 129 |     );
+ 130 |     req.on("error", () => resolve(false));
+ 131 |     req.on("timeout", () => {
+ 132 |       req.destroy();
+ 133 |       resolve(false);
+ 134 |     });
+ 135 |     req.end();
+ 136 |   });
+ 137 | }
+ 138 |
+ 139 | export async function waitForLocalModelServerReady({
+ 140 |   timeoutMs = SERVER_START_TIMEOUT_MS,
+ 141 |   intervalMs = SERVER_START_POLL_MS,
+ 142 |   healthCheck = serverHealth,
+ 143 | }: {
+ 144 |   timeoutMs?: number;
+ 145 |   intervalMs?: number;
+ 146 |   healthCheck?: () => Promise<boolean>;
+ 147 | } = {}): Promise<boolean> {
+ 148 |   const deadline = Date.now() + timeoutMs;
+ 149 |   do {
+ 150 |     if (await healthCheck()) return true;
+ 151 |     await new Promise((resolve) => setTimeout(resolve, intervalMs));
+ 152 |   } while (Date.now() < deadline);
+ 153 |   return healthCheck();
  154 | }
- 155 | 
- 156 | export async function startLocalModelServer(
- 157 |   modelPath: string,
- 158 | ): Promise<LocalModelServerStatus> {
- 159 |   if (!isLaunchableLocalModel(modelPath)) {
- 160 |     return {
- 161 |       ...(await getLocalModelServerStatus()),
- 162 |       error: "Only GGUF model files can be launched with llama-server.",
- 163 |     };
- 164 |   }
- 165 |   if (!isDiscoveredLocalModelPath(modelPath)) {
- 166 |     return {
- 167 |       ...(await getLocalModelServerStatus()),
- 168 |       error: "Model file is not in a configured local model folder.",
- 169 |     };
- 170 |   }
- 171 |   if (!existsSync(modelPath)) {
- 172 |     return {
- 173 |       ...(await getLocalModelServerStatus()),
- 174 |       error: `Model file does not exist: ${modelPath}`,
- 175 |     };
- 176 |   }
- 177 | 
- 178 |   const current = await getLocalModelServerStatus();
- 179 |   if (current.running && current.modelPath === modelPath) return current;
- 180 |   if (current.managed && current.modelPath !== modelPath) {
- 181 |     stopLocalModelServer();
- 182 |   }
- 183 | 
- 184 |   const command = resolveLlamaServerCommand();
- 185 |   if (!commandAvailable(command)) {
- 186 |     return {
- 187 |       ...current,
- 188 |       launcherAvailable: false,
- 189 |       launcherPath: null,
- 190 |       error: "llama-server was not found on PATH.",
- 191 |     };
- 192 |   }
- 193 | 
- 194 |   localModelProcess = spawn(command, buildLlamaServerArgs(modelPath), {
- 195 |     env: { ...process.env, PATH: getEnhancedPath() },
- 196 |     detached: process.platform !== "win32",
- 197 |     stdio: "ignore",
- 198 |     ...HIDDEN_SUBPROCESS_OPTIONS,
- 199 |   });
- 200 |   localModelProcess.unref();
- 201 | 
- 202 |   if (localModelProcess.pid) {
- 203 |     safeWriteFile(PID_FILE, String(localModelProcess.pid));
- 204 |     safeWriteFile(MODEL_FILE, modelPath);
- 205 |   }
- 206 | 
- 207 |   return getLocalModelServerStatus();
- 208 | }
- 209 |
+ 155 |
+ 156 | export async function getLocalModelServerStatus(): Promise<LocalModelServerStatus> {
+ 157 |   const launcherPath = resolveLlamaServerCommand();
+ 158 |   const launcherAvailable = commandAvailable(launcherPath);
+ 159 |   const pid = readPid();
+ 160 |   const managed = Boolean(pid && pidIsAlive(pid));
+ 161 |   const running = await serverHealth();
+ 162 |   if (pid && !managed && !running) clearStateFiles();
+ 163 |
+ 164 |   return {
+ 165 |     running,
+ 166 |     managed,
+ 167 |     launcherAvailable,
+ 168 |     launcherPath: launcherAvailable ? launcherPath : null,
+ 169 |     modelPath: managed ? readModelPath() : null,
+ 170 |     baseUrl: LOCAL_MODEL_SERVER_BASE_URL,
+ 171 |     pid: managed ? pid : null,
+ 172 |   };
+ 173 | }
+ 174 |
+ 175 | export async function startLocalModelServer(
+ 176 |   modelPath: string,
+ 177 | ): Promise<LocalModelServerStatus> {
+ 178 |   if (!isLaunchableLocalModel(modelPath)) {
+ 179 |     return {
+ 180 |       ...(await getLocalModelServerStatus()),
+ 181 |       error: "Only GGUF model files can be launched with llama-server.",
+ 182 |     };
+ 183 |   }
+ 184 |   if (!isDiscoveredLocalModelPath(modelPath)) {
+ 185 |     return {
+ 186 |       ...(await getLocalModelServerStatus()),
+ 187 |       error: "Model file is not in a configured local model folder.",
+ 188 |     };
+ 189 |   }
+ 190 |   if (!existsSync(modelPath)) {
+ 191 |     return {
+ 192 |       ...(await getLocalModelServerStatus()),
+ 193 |       error: `Model file does not exist: ${modelPath}`,
+ 194 |     };
+ 195 |   }
+ 196 |
+ 197 |   const current = await getLocalModelServerStatus();
+ 198 |   if (current.running && current.modelPath === modelPath) return current;
+ 199 |   if (current.managed && current.modelPath !== modelPath) {
+ 200 |     stopLocalModelServer();
+ 201 |   }
+ 202 |
+ 203 |   const command = resolveLlamaServerCommand();
+ 204 |   if (!commandAvailable(command)) {
+ 205 |     return {
+ 206 |       ...current,
+ 207 |       launcherAvailable: false,
+ 208 |       launcherPath: null,
+ 209 |       error: "llama-server was not found on PATH.",
 ```
 
 ## Session Cache Algorithm
@@ -228,19 +228,19 @@ Session sync uses a last-sync window, O(1) Map merges, and chunked stale count r
   86 |     // non-fatal
   87 |   }
   88 | }
-  89 | 
+  89 |
   90 | function getDb(): Database.Database | null {
   91 |   const dbPath = activeStateDbPath();
   92 |   if (!existsSync(dbPath)) return null;
   93 |   return new Database(dbPath, { readonly: true });
   94 | }
-  95 | 
+  95 |
   96 | // Sync from hermes DB to local cache — only fetches new/updated sessions
   97 | export function syncSessionCache(): CachedSession[] {
   98 |   const cache = readCache();
   99 |   const db = getDb();
  100 |   if (!db) return cache.sessions;
- 101 | 
+ 101 |
  102 |   try {
  103 |     // Fetch sessions newer than last sync, or all if first sync
  104 |     const rows = db
@@ -258,7 +258,7 @@ Session sync uses a last-sync window, O(1) Map merges, and chunked stale count r
  116 |       model: string;
  117 |       title: string | null;
  118 |     }>;
- 119 | 
+ 119 |
  120 |     // Index existing sessions by id once so the per-row update below is
  121 |     // O(1) instead of O(N). Without this, syncing N existing sessions
  122 |     // against N new rows is O(N²) and visibly slows app startup once a
@@ -266,7 +266,7 @@ Session sync uses a last-sync window, O(1) Map merges, and chunked stale count r
  124 |     const existingById = new Map<string, CachedSession>();
  125 |     for (const s of cache.sessions) existingById.set(s.id, s);
  126 |     const newSessions: CachedSession[] = [];
- 127 | 
+ 127 |
  128 |     const refreshedIds = new Set<string>();
  129 |     for (const row of rows) {
  130 |       refreshedIds.add(row.id);
@@ -277,7 +277,7 @@ Session sync uses a last-sync window, O(1) Map merges, and chunked stale count r
  135 |         if (row.title) existing.title = row.title;
  136 |         continue;
  137 |       }
- 138 | 
+ 138 |
  139 |       let title = row.title || "";
  140 |       if (!title) {
  141 |         try {
@@ -295,7 +295,7 @@ Session sync uses a last-sync window, O(1) Map merges, and chunked stale count r
  153 |           title = t("sessions.newConversation", getAppLocale());
  154 |         }
  155 |       }
- 156 | 
+ 156 |
  157 |       newSessions.push({
  158 |         id: row.id,
  159 |         title,
@@ -305,7 +305,7 @@ Session sync uses a last-sync window, O(1) Map merges, and chunked stale count r
  163 |         model: row.model || "",
  164 |       });
  165 |     }
- 166 | 
+ 166 |
  167 |     // Phase 2: refresh message_count for cached sessions that weren't
  168 |     // returned by the lastSync-windowed query above. Without this, an
  169 |     // old session that's still accumulating messages keeps the stale
@@ -337,7 +337,7 @@ Session sync uses a last-sync window, O(1) Map merges, and chunked stale count r
 Paperclip config normalizes URLs, validates health, checks `paperclipai` or `npx`, and starts `npx paperclipai run` with telemetry disabled by default.
 
 ```ts
-  46 | 
+  46 |
   47 | export function normalizePaperclipUrl(input: string): string {
   48 |   const trimmed = input.trim();
   49 |   if (!trimmed) return DEFAULT_PAPERCLIP_URL;
@@ -354,7 +354,7 @@ Paperclip config normalizes URLs, validates health, checks `paperclipai` or `npx
   60 |     return DEFAULT_PAPERCLIP_URL;
   61 |   }
   62 | }
-  63 | 
+  63 |
   64 | export function readPaperclipConfigFromData(
   65 |   data: Record<string, unknown>,
   66 | ): PaperclipConfig {
@@ -362,7 +362,7 @@ Paperclip config normalizes URLs, validates health, checks `paperclipai` or `npx
   68 |     data.paperclip && typeof data.paperclip === "object"
   69 |       ? (data.paperclip as Record<string, unknown>)
   70 |       : {};
-  71 | 
+  71 |
   72 |   return {
   73 |     serverUrl: normalizePaperclipUrl(
   74 |       typeof raw.serverUrl === "string" ? raw.serverUrl : "",
@@ -371,7 +371,7 @@ Paperclip config normalizes URLs, validates health, checks `paperclipai` or `npx
   77 |       typeof raw.telemetryDisabled === "boolean" ? raw.telemetryDisabled : true,
   78 |   };
   79 | }
-  80 | 
+  80 |
   81 | export function mergePaperclipConfigData(
   82 |   data: Record<string, unknown>,
   83 |   config: Partial<PaperclipConfig>,
@@ -385,11 +385,11 @@ Paperclip config normalizes URLs, validates health, checks `paperclipai` or `npx
   91 |     },
   92 |   };
   93 | }
-  94 | 
+  94 |
   95 | export function getPaperclipConfig(): PaperclipConfig {
   96 |   return readPaperclipConfigFromData(readDesktopConfig());
   97 | }
-  98 | 
+  98 |
   99 | export function setPaperclipConfig(
  100 |   config: Partial<PaperclipConfig>,
  101 | ): PaperclipConfig {
@@ -397,7 +397,7 @@ Paperclip config normalizes URLs, validates health, checks `paperclipai` or `npx
  103 |   writeDesktopConfig(nextData);
  104 |   return readPaperclipConfigFromData(nextData);
  105 | }
- 106 | 
+ 106 |
  107 | function requestHealth(url: string): Promise<boolean> {
  108 |   return new Promise((resolve) => {
  109 |     const healthUrl = `${normalizePaperclipUrl(url)}/health`;

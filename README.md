@@ -112,6 +112,8 @@ The reconstruction and audit documentation requested for this fork lives in:
 - [docs/project-reconstruction/AI_REVIEW_PACK.md](docs/project-reconstruction/AI_REVIEW_PACK.md)
 - [docs/project-reconstruction/TECHNOLOGY_AUDIT.md](docs/project-reconstruction/TECHNOLOGY_AUDIT.md)
 
+Documentation pack last regenerated: `2026-06-03`.
+
 Those documents are written to give another AI system enough context to recreate the project, audit its architecture, and identify improvement opportunities.
 
 ## Important Paths

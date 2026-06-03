@@ -1,6 +1,6 @@
 # 01 - Project Overview and Architecture
 
-Generated from repository state on 2026-06-02. No secrets are included; environment-variable names are documented without values.
+Generated from repository state on 2026-06-03. No secrets are included; environment-variable names are documented without values.
 
 ## Purpose
 
@@ -129,7 +129,7 @@ The Electron window is configured in the main process and protected by URL allow
 
 ```ts
  300 |   });
- 301 | 
+ 301 |
  302 |   mainWindow.webContents.on(
  303 |     "console-message",
  304 |     (_event, level, message, line, sourceId) => {
@@ -138,19 +138,19 @@ The Electron window is configured in the main process and protected by URL allow
  307 |       }
  308 |     },
  309 |   );
- 310 | 
+ 310 |
  311 |   mainWindow.webContents.on(
  312 |     "did-fail-load",
  313 |     (_event, errorCode, errorDescription) => {
  314 |       console.error("[LOAD FAIL]", errorCode, errorDescription);
  315 |     },
  316 |   );
- 317 | 
+ 317 |
  318 |   mainWindow.webContents.setWindowOpenHandler((details) => {
  319 |     openExternalUrl(details.url);
  320 |     return { action: "deny" };
  321 |   });
- 322 | 
+ 322 |
  323 |   mainWindow.webContents.on("will-navigate", (event, url) => {
  324 |     if (
  325 |       isAllowedAppNavigationUrl(
@@ -161,11 +161,11 @@ The Electron window is configured in the main process and protected by URL allow
  330 |     ) {
  331 |       return;
  332 |     }
- 333 | 
+ 333 |
  334 |     event.preventDefault();
  335 |     openExternalUrl(url);
  336 |   });
- 337 | 
+ 337 |
  338 |   mainWindow.webContents.on(
  339 |     "will-attach-webview",
  340 |     (event, webPreferences, params) => {
@@ -174,11 +174,11 @@ The Electron window is configured in the main process and protected by URL allow
  343 |         console.warn("[SECURITY] Blocked webview attachment for untrusted URL");
  344 |         return;
  345 |       }
- 346 | 
+ 346 |
  347 |       hardenWebviewPreferences(webPreferences);
  348 |     },
  349 |   );
- 350 | 
+ 350 |
  351 |   // Right-click context menu (issue #298): native Cut/Copy/Paste/Select All
  352 |   // via Electron roles — they act on the focused field / selection and work
  353 |   // across the whole app — plus two items to copy the whole conversation.

@@ -1,6 +1,6 @@
 # 03 - Database Schema and Data Models
 
-Generated from repository state on 2026-06-02. No secrets are included; environment-variable names are documented without values.
+Generated from repository state on 2026-06-03. No secrets are included; environment-variable names are documented without values.
 
 ## Persistent Stores
 
@@ -61,7 +61,7 @@ FTS5 virtual table used for session search. Desktop checks for table existence b
  143 |   }
  144 |   return { text: texts.join("\n\n"), attachments };
  145 | }
- 146 | 
+ 146 |
  147 | function guessExtension(mime: string): string {
  148 |   switch (mime.toLowerCase()) {
  149 |     case "image/png":
@@ -76,7 +76,7 @@ FTS5 virtual table used for session search. Desktop checks for table existence b
  158 |       return "bin";
  159 |   }
  160 | }
- 161 | 
+ 161 |
  162 | export interface SearchResult {
  163 |   sessionId: string;
  164 |   title: string | null;
@@ -86,7 +86,7 @@ FTS5 virtual table used for session search. Desktop checks for table existence b
  168 |   model: string;
  169 |   snippet: string;
  170 | }
- 171 | 
+ 171 |
  172 | function getDb(readonly = true): Database.Database | null {
  173 |   // Open the active profile's session DB — named profiles keep their
  174 |   // sessions under ~/.hermes/profiles/<name>/state.db (issue #311).
@@ -94,11 +94,11 @@ FTS5 virtual table used for session search. Desktop checks for table existence b
  176 |   if (!existsSync(dbPath)) return null;
  177 |   return new Database(dbPath, readonly ? { readonly: true } : {});
  178 | }
- 179 | 
+ 179 |
  180 | export function listSessions(limit = 30, offset = 0): SessionSummary[] {
  181 |   const db = getDb();
  182 |   if (!db) return [];
- 183 | 
+ 183 |
  184 |   try {
  185 |     // Simple query without correlated subquery — titles come from session cache
  186 |     const rows = db
@@ -124,7 +124,7 @@ FTS5 virtual table used for session search. Desktop checks for table existence b
  206 |       model: string;
  207 |       title: string | null;
  208 |     }>;
- 209 | 
+ 209 |
  210 |     return rows.map((r) => ({
  211 |       id: r.id,
  212 |       source: r.source,
@@ -139,11 +139,11 @@ FTS5 virtual table used for session search. Desktop checks for table existence b
  221 |     db.close();
  222 |   }
  223 | }
- 224 | 
+ 224 |
  225 | export function searchSessions(query: string, limit = 20): SearchResult[] {
  226 |   const db = getDb();
  227 |   if (!db) return [];
- 228 | 
+ 228 |
  229 |   try {
  230 |     // Check if FTS table exists
 ```
@@ -165,12 +165,12 @@ Hermes Agent stores multimodal message content with a sentinel prefix `\x00json:
   79 |       timestamp: number;
   80 |       attachments?: Attachment[];
   81 |     };
-  82 | 
+  82 |
   83 | interface DecodedContent {
   84 |   text: string;
   85 |   attachments: Attachment[];
   86 | }
-  87 | 
+  87 |
   88 | /**
   89 |  * Decode the agent's `messages.content` cell.  Plain strings are returned
   90 |  * verbatim; values with the agent's JSON-prefix sentinel are unpacked into
@@ -191,7 +191,7 @@ Hermes Agent stores multimodal message content with a sentinel prefix `\x00json:
  105 |   if (!Array.isArray(parts)) {
  106 |     return { text: typeof parts === "string" ? parts : raw, attachments: [] };
  107 |   }
- 108 | 
+ 108 |
  109 |   const texts: string[] = [];
  110 |   const attachments: Attachment[] = [];
  111 |   let idx = 0;
@@ -230,7 +230,7 @@ The session cache is profile-scoped. Default profile cache lives under `~/.herme
    9 | import Database from "better-sqlite3";
   10 | import { t } from "../shared/i18n";
   11 | import { getAppLocale } from "./locale";
-  12 | 
+  12 |
   13 | /**
   14 |  * The session cache lives alongside its own profile's data so profiles
   15 |  * don't share a single cache file. The default profile keeps
@@ -244,7 +244,7 @@ The session cache is profile-scoped. Default profile cache lives under `~/.herme
   23 |     "sessions.json",
   24 |   );
   25 | }
-  26 | 
+  26 |
   27 | export interface CachedSession {
   28 |   id: string;
   29 |   title: string;
@@ -253,32 +253,32 @@ The session cache is profile-scoped. Default profile cache lives under `~/.herme
   32 |   messageCount: number;
   33 |   model: string;
   34 | }
-  35 | 
+  35 |
   36 | interface CacheData {
   37 |   sessions: CachedSession[];
   38 |   lastSync: number;
   39 | }
-  40 | 
+  40 |
   41 | // Generate a short, readable title from the first user message (like ChatGPT/Claude)
   42 | function generateTitle(message: string): string {
   43 |   if (!message || !message.trim())
   44 |     return t("sessions.newConversation", getAppLocale());
-  45 | 
+  45 |
   46 |   // Clean up the message
   47 |   let text = message.trim();
-  48 | 
+  48 |
   49 |   // Remove markdown formatting
   50 |   text = text.replace(/[#*_`~[\]()]/g, "");
   51 |   // Remove URLs
   52 |   text = text.replace(/https?:\/\/\S+/g, "");
   53 |   // Remove extra whitespace
   54 |   text = text.replace(/\s+/g, " ").trim();
-  55 | 
+  55 |
   56 |   if (!text) return t("sessions.newConversation", getAppLocale());
-  57 | 
+  57 |
   58 |   // If short enough, use as-is
   59 |   if (text.length <= 50) return text;
-  60 | 
+  60 |
   61 |   // Take first meaningful chunk — aim for ~40-50 chars at word boundary
   62 |   const words = text.split(" ");
   63 |   let title = "";
@@ -286,10 +286,10 @@ The session cache is profile-scoped. Default profile cache lives under `~/.herme
   65 |     if ((title + " " + word).trim().length > 45) break;
   66 |     title = (title + " " + word).trim();
   67 |   }
-  68 | 
+  68 |
   69 |   return title || text.slice(0, 45) + "...";
   70 | }
-  71 | 
+  71 |
   72 | function readCache(): CacheData {
   73 |   const file = cacheFilePath();
   74 |   try {
@@ -299,7 +299,7 @@ The session cache is profile-scoped. Default profile cache lives under `~/.herme
   78 |     return { sessions: [], lastSync: 0 };
   79 |   }
   80 | }
-  81 | 
+  81 |
   82 | function writeCache(data: CacheData): void {
   83 |   try {
   84 |     safeWriteFile(cacheFilePath(), JSON.stringify(data));
@@ -307,7 +307,7 @@ The session cache is profile-scoped. Default profile cache lives under `~/.herme
   86 |     // non-fatal
   87 |   }
   88 | }
-  89 | 
+  89 |
   90 | function getDb(): Database.Database | null {
 ```
 
@@ -326,9 +326,9 @@ The session cache is profile-scoped. Default profile cache lives under `~/.herme
    8 |   buildLocalModelEntries,
    9 |   discoverLocalModelFiles,
   10 | } from "./local-model-files";
-  11 | 
+  11 |
   12 | const MODELS_FILE = join(HERMES_HOME, "models.json");
-  13 | 
+  13 |
   14 | export interface SavedModel {
   15 |   id: string;
   16 |   name: string;
@@ -342,7 +342,7 @@ The session cache is profile-scoped. Default profile cache lives under `~/.herme
   24 |   launchable?: boolean;
   25 |   createdAt: number;
   26 | }
-  27 | 
+  27 |
   28 | export function readModels(): SavedModel[] {
   29 |   try {
   30 |     if (!existsSync(MODELS_FILE)) return [];
@@ -351,11 +351,11 @@ The session cache is profile-scoped. Default profile cache lives under `~/.herme
   33 |     return [];
   34 |   }
   35 | }
-  36 | 
+  36 |
   37 | function writeModels(models: SavedModel[]): void {
   38 |   safeWriteFile(MODELS_FILE, JSON.stringify(models, null, 2));
   39 | }
-  40 | 
+  40 |
   41 | interface CustomProviderEntry {
   42 |   name: string;
   43 |   provider: string;

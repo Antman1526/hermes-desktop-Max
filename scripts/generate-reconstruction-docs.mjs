@@ -11,6 +11,7 @@ const builder = readFileSync(join(root, "electron-builder.yml"), "utf8").trim();
 const vite = readFileSync(join(root, "electron.vite.config.ts"), "utf8").trim();
 const vitest = readFileSync(join(root, "vitest.config.ts"), "utf8").trim();
 const eslint = readFileSync(join(root, "eslint.config.mjs"), "utf8").trim();
+const generatedOn = "2026-06-03";
 
 function ensureDir(file) {
   mkdirSync(dirname(file), { recursive: true });
@@ -28,7 +29,11 @@ function code(path, start = 1, end = start + 60) {
   const lines = readFileSync(abs, "utf8").split(/\r?\n/);
   return lines
     .slice(start - 1, end)
-    .map((line, index) => `${String(start + index).padStart(4, " ")} | ${line}`)
+    .map((line, index) =>
+      line.length > 0
+        ? `${String(start + index).padStart(4, " ")} | ${line}`
+        : `${String(start + index).padStart(4, " ")} |`,
+    )
     .join("\n");
 }
 
@@ -43,7 +48,7 @@ function listObject(obj) {
 }
 
 function title(n, text) {
-  return `# ${String(n).padStart(2, "0")} - ${text}\n\nGenerated from repository state on 2026-06-02. No secrets are included; environment-variable names are documented without values.`;
+  return `# ${String(n).padStart(2, "0")} - ${text}\n\nGenerated from repository state on ${generatedOn}. No secrets are included; environment-variable names are documented without values.`;
 }
 
 const dependencyList = listObject(pkg.dependencies);
@@ -1119,7 +1124,7 @@ writeDoc(
   "AI_REVIEW_PACK.md",
   `# Hermes Desktop Max - AI Review Pack
 
-Generated from repository state on 2026-06-02. This condensed three-page pack is designed for another AI reviewer to quickly reason about optimization, refactoring, patterns, and architecture.
+Generated from repository state on ${generatedOn}. This condensed three-page pack is designed for another AI reviewer to quickly reason about optimization, refactoring, patterns, and architecture.
 
 ## Page 1 - Project Overview
 
@@ -1202,7 +1207,7 @@ writeDoc(
   "TECHNOLOGY_AUDIT.md",
   `# Hermes Desktop Max - Technology Audit
 
-Generated from repository state on 2026-06-02. This audit identifies technologies, frameworks, libraries, tools, languages, and services used by this codebase and explains their role in this project.
+Generated from repository state on ${generatedOn}. This audit identifies technologies, frameworks, libraries, tools, languages, and services used by this codebase and explains their role in this project.
 
 ## Languages and Runtimes
 
@@ -1437,6 +1442,8 @@ The reconstruction and audit documentation requested for this fork lives in:
 - [docs/project-reconstruction/INDEX.md](docs/project-reconstruction/INDEX.md)
 - [docs/project-reconstruction/AI_REVIEW_PACK.md](docs/project-reconstruction/AI_REVIEW_PACK.md)
 - [docs/project-reconstruction/TECHNOLOGY_AUDIT.md](docs/project-reconstruction/TECHNOLOGY_AUDIT.md)
+
+Documentation pack last regenerated: \`${generatedOn}\`.
 
 Those documents are written to give another AI system enough context to recreate the project, audit its architecture, and identify improvement opportunities.
 

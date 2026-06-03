@@ -1,6 +1,6 @@
 # 04 - Backend API Specifications
 
-Generated from repository state on 2026-06-02. No secrets are included; environment-variable names are documented without values.
+Generated from repository state on 2026-06-03. No secrets are included; environment-variable names are documented without values.
 
 ## API Surface
 
@@ -16,27 +16,27 @@ Hermes Desktop exposes backend operations through Electron IPC, not a public HTT
   39 |     configured: boolean;
   40 |     hasApiKey: boolean;
   41 |   }> => ipcRenderer.invoke("check-install"),
-  42 | 
+  42 |
   43 |   verifyInstall: (): Promise<boolean> => ipcRenderer.invoke("verify-install"),
-  44 | 
+  44 |
   45 |   startInstall: (): Promise<{ success: boolean; error?: string }> =>
   46 |     ipcRenderer.invoke("start-install"),
-  47 | 
+  47 |
   48 |   // Pre-install inspection + "use an existing installation" (issue #272)
   49 |   inspectInstallTarget: (): Promise<{
   50 |     hermesHome: string;
   51 |     repoPath: string;
   52 |     state: "fresh" | "update" | "replace";
   53 |   }> => ipcRenderer.invoke("inspect-install-target"),
-  54 | 
+  54 |
   55 |   validateHermesHome: (dir: string): Promise<boolean> =>
   56 |     ipcRenderer.invoke("validate-hermes-home", dir),
-  57 | 
+  57 |
   58 |   adoptHermesHome: (dir: string): Promise<boolean> =>
   59 |     ipcRenderer.invoke("adopt-hermes-home", dir),
-  60 | 
+  60 |
   61 |   quitApp: (): Promise<void> => ipcRenderer.invoke("quit-app"),
-  62 | 
+  62 |
   63 |   onInstallProgress: (
   64 |     callback: (progress: {
   65 |       step: number;
@@ -62,7 +62,7 @@ Hermes Desktop exposes backend operations through Electron IPC, not a public HTT
   85 |     ipcRenderer.on("install-progress", handler);
   86 |     return () => ipcRenderer.removeListener("install-progress", handler);
   87 |   },
-  88 | 
+  88 |
   89 |   // Hermes engine info
   90 |   getHermesVersion: (): Promise<string | null> =>
 ```
@@ -73,9 +73,9 @@ Hermes Desktop exposes backend operations through Electron IPC, not a public HTT
  407 |   ipcMain.handle("check-install", () => {
  408 |     return checkInstallStatus();
  409 |   });
- 410 | 
+ 410 |
  411 |   ipcMain.handle("verify-install", () => verifyInstall());
- 412 | 
+ 412 |
  413 |   ipcMain.handle("start-install", async (event) => {
  414 |     try {
  415 |       await runInstall((progress: InstallProgress) => {
@@ -86,7 +86,7 @@ Hermes Desktop exposes backend operations through Electron IPC, not a public HTT
  420 |       return { success: false, error: (err as Error).message };
  421 |     }
  422 |   });
- 423 | 
+ 423 |
  424 |   // Pre-install inspection + "use an existing installation" (issue #272).
  425 |   ipcMain.handle("inspect-install-target", () => inspectInstallTarget());
  426 |   ipcMain.handle("validate-hermes-home", (_event, dir: string) =>
@@ -102,7 +102,7 @@ Hermes Desktop exposes backend operations through Electron IPC, not a public HTT
  436 |     return true;
  437 |   });
  438 |   ipcMain.handle("quit-app", () => app.quit());
- 439 | 
+ 439 |
  440 |   // Hermes engine info
  441 |   ipcMain.handle("get-hermes-version", async () => {
  442 |     const conn = getConnectionConfig();
@@ -200,9 +200,9 @@ Local mode defaults to `http://127.0.0.1:8642`. Remote and SSH modes normalize c
   40 | import { readModels } from "./models";
   41 | import { HIDDEN_SUBPROCESS_OPTIONS } from "./process-options";
   42 | import { type Attachment, escapeXmlAttr } from "../shared/attachments";
-  43 | 
+  43 |
   44 | const LOCAL_API_URL = "http://127.0.0.1:8642";
-  45 | 
+  45 |
   46 | /**
   47 |  * Normalise a remote-mode URL the user typed into the connection
   48 |  * settings.  Strips trailing slashes and, importantly, a trailing
@@ -222,7 +222,7 @@ Local mode defaults to `http://127.0.0.1:8642`. Remote and SSH modes normalize c
   62 |   url = url.replace(/\/v1$/i, "");
   63 |   return url;
   64 | }
-  65 | 
+  65 |
   66 | export function getApiUrl(): string {
   67 |   const conn = getConnectionConfig();
   68 |   if (conn.mode === "ssh") {
@@ -235,17 +235,17 @@ Local mode defaults to `http://127.0.0.1:8642`. Remote and SSH modes normalize c
   75 |   }
   76 |   return LOCAL_API_URL;
   77 | }
-  78 | 
+  78 |
   79 | export function isRemoteMode(): boolean {
   80 |   const mode = getConnectionConfig().mode;
   81 |   return mode === "remote" || mode === "ssh";
   82 | }
-  83 | 
+  83 |
   84 | /** True only for pure remote HTTP — SSH tunnel has full local access via SSH exec */
   85 | export function isRemoteOnlyMode(): boolean {
   86 |   return getConnectionConfig().mode === "remote";
   87 | }
-  88 | 
+  88 |
   89 | // Cached API key read from the remote .env when SSH tunnel starts
   90 | let _sshRemoteApiKey = "";
 ```

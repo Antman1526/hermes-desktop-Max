@@ -1,6 +1,6 @@
 # 10 - Testing Strategy and Test Cases
 
-Generated from repository state on 2026-06-02. No secrets are included; environment-variable names are documented without values.
+Generated from repository state on 2026-06-03. No secrets are included; environment-variable names are documented without values.
 
 ## Test Runner
 
@@ -60,24 +60,24 @@ Local model tests validate root scanning and launcher restrictions:
    6 |   buildLocalModelEntries,
    7 |   discoverLocalModelFiles,
    8 | } from "../src/main/local-model-files";
-   9 | 
+   9 |
   10 | const TEST_DIR = join(tmpdir(), `hermes-local-models-${Date.now()}`);
-  11 | 
+  11 |
   12 | beforeEach(() => {
   13 |   mkdirSync(TEST_DIR, { recursive: true });
   14 | });
-  15 | 
+  15 |
   16 | afterEach(() => {
   17 |   rmSync(TEST_DIR, { recursive: true, force: true });
   18 | });
-  19 | 
+  19 |
   20 | describe("local model file discovery", () => {
   21 |   it("discovers GGUF and safetensors model files under configured roots", () => {
   22 |     const mainStore = join(TEST_DIR, "MainStore", "AI_Models");
   23 |     const desktop = join(TEST_DIR, "Desktop", "AI_Models");
   24 |     mkdirSync(join(mainStore, "GGUF"), { recursive: true });
   25 |     mkdirSync(join(desktop, "Transformers"), { recursive: true });
-  26 | 
+  26 |
   27 |     const gguf = join(mainStore, "GGUF", "Hermes-3-Llama-3.1-8B-Q4_K_M.gguf");
   28 |     const safetensors = join(
   29 |       desktop,
@@ -91,21 +91,21 @@ Local model tests validate root scanning and launcher restrictions:
   37 |     );
   38 |     writeFileSync(join(mainStore, "STT.bin"), "");
   39 |     writeFileSync(safetensors, "");
-  40 | 
+  40 |
   41 |     expect(discoverLocalModelFiles([mainStore, desktop])).toEqual([
   42 |       { path: gguf, root: mainStore, format: "gguf" },
   43 |       { path: safetensors, root: desktop, format: "safetensors" },
   44 |     ]);
   45 |   });
-  46 | 
+  46 |
   47 |   it("builds stable custom-provider entries that preserve local server base URL", () => {
   48 |     const root = join(TEST_DIR, "AI_Models");
   49 |     const modelPath = join(root, "GGUF", "Qwen3.6-27B-Q4_K_M.gguf");
-  50 | 
+  50 |
   51 |     const entries = buildLocalModelEntries([
   52 |       { path: modelPath, root, format: "gguf" },
   53 |     ]);
-  54 | 
+  54 |
   55 |     expect(entries).toEqual([
   56 |       expect.objectContaining({
   57 |         id: expect.stringMatching(/^local-file-/),
@@ -134,7 +134,7 @@ Paperclip tests validate URL normalization and sidecar behavior:
    5 |   normalizePaperclipUrl,
    6 |   readPaperclipConfigFromData,
    7 | } from "../src/main/paperclip";
-   8 | 
+   8 |
    9 | describe("Paperclip sidecar config", () => {
   10 |   it("normalizes empty and bare Paperclip URLs", () => {
   11 |     expect(normalizePaperclipUrl("")).toBe(DEFAULT_PAPERCLIP_URL);
@@ -145,7 +145,7 @@ Paperclip tests validate URL normalization and sidecar behavior:
   16 |       "http://127.0.0.1:3100",
   17 |     );
   18 |   });
-  19 | 
+  19 |
   20 |   it("rejects non-http Paperclip URLs", () => {
   21 |     expect(normalizePaperclipUrl("file:///tmp/paperclip")).toBe(
   22 |       DEFAULT_PAPERCLIP_URL,
@@ -154,20 +154,20 @@ Paperclip tests validate URL normalization and sidecar behavior:
   25 |       DEFAULT_PAPERCLIP_URL,
   26 |     );
   27 |   });
-  28 | 
+  28 |
   29 |   it("reads defaults when desktop config has no Paperclip block", () => {
   30 |     expect(readPaperclipConfigFromData({})).toEqual({
   31 |       serverUrl: DEFAULT_PAPERCLIP_URL,
   32 |       telemetryDisabled: true,
   33 |     });
   34 |   });
-  35 | 
+  35 |
   36 |   it("merges Paperclip config without discarding unrelated desktop settings", () => {
   37 |     const next = mergePaperclipConfigData(
   38 |       { connectionMode: "local", remoteUrl: "http://example.test" },
   39 |       { serverUrl: "localhost:3100/", telemetryDisabled: false },
   40 |     );
-  41 | 
+  41 |
   42 |     expect(next).toEqual({
   43 |       connectionMode: "local",
   44 |       remoteUrl: "http://example.test",
@@ -195,12 +195,12 @@ Security tests validate allowed URLs and webview hardening:
    9 |   isAllowedExternalUrl,
   10 |   isAllowedWebviewUrl,
   11 | } from "../src/main/security";
-  12 | 
+  12 |
   13 | const ROOT = join(__dirname, "..");
   14 | const mainSrc = readFileSync(join(ROOT, "src/main/index.ts"), "utf-8");
   15 | const preloadSrc = readFileSync(join(ROOT, "src/preload/index.ts"), "utf-8");
   16 | const installerSrc = readFileSync(join(ROOT, "src/main/installer.ts"), "utf-8");
-  17 | 
+  17 |
   18 | describe("Electron main process hardening", () => {
   19 |   it("keeps the main renderer isolated from Node privileges", () => {
   20 |     expect(mainSrc).toContain("nodeIntegration: false");
@@ -209,7 +209,7 @@ Security tests validate allowed URLs and webview hardening:
   23 |     expect(mainSrc).toContain("webSecurity: true");
   24 |     expect(mainSrc).toContain("allowRunningInsecureContent: false");
   25 |   });
-  26 | 
+  26 |
   27 |   it("blocks untrusted top-level navigation and webview attachment", () => {
   28 |     expect(mainSrc).toContain("setWindowOpenHandler((details) => {");
   29 |     expect(mainSrc).toContain('webContents.on("will-navigate"');
@@ -218,13 +218,13 @@ Security tests validate allowed URLs and webview hardening:
   32 |     expect(mainSrc).toContain("isAllowedWebviewUrl(params.src)");
   33 |     expect(mainSrc).toContain("hardenWebviewPreferences(webPreferences)");
   34 |   });
-  35 | 
+  35 |
   36 |   it("keeps attached webviews constrained after initial attachment", () => {
   37 |     expect(mainSrc).toContain('app.on("web-contents-created"');
   38 |     expect(mainSrc).toContain('contents.getType() === "webview"');
   39 |     expect(mainSrc).toContain("hardenAttachedWebContents(contents)");
   40 |   });
-  41 | 
+  41 |
   42 |   it("routes shell.openExternal through the allowlist helper", () => {
   43 |     const directShellOpens = mainSrc.match(/shell\.openExternal\(/g) ?? [];
   44 |     expect(directShellOpens).toHaveLength(1);
@@ -232,18 +232,18 @@ Security tests validate allowed URLs and webview hardening:
   46 |       "function openExternalUrl(rawUrl: unknown): void",
   47 |     );
   48 |   });
-  49 | 
+  49 |
   50 |   it("keeps the sandboxed main preload free of external runtime imports", () => {
   51 |     expect(preloadSrc).not.toContain("@electron-toolkit/preload");
   52 |   });
-  53 | 
+  53 |
   54 |   it("runs hermes doctor without a shell-built command string", () => {
   55 |     expect(installerSrc).toContain(
   56 |       'execFileSync(HERMES_PYTHON, hermesCliArgs(["doctor"])',
   57 |     );
   58 |     expect(installerSrc).not.toContain("execSync(`");
   59 |   });
-  60 | 
+  60 |
   61 |   it("keeps the Linux sudo precache install flow wired in", () => {
   62 |     expect(installerSrc).toContain(
   63 |       'import { precacheSudoCredentials } from "./sudoCreds"',
@@ -254,14 +254,14 @@ Security tests validate allowed URLs and webview hardening:
   68 |     expect(installerSrc).toContain("sudoPrecache.stop();");
   69 |   });
   70 | });
-  71 | 
+  71 |
   72 | describe("Electron external URL policy", () => {
   73 |   it("allows browser-safe external protocols", () => {
   74 |     expect(isAllowedExternalUrl("https://example.com/docs")).toBe(true);
   75 |     expect(isAllowedExternalUrl("http://localhost:3000")).toBe(true);
   76 |     expect(isAllowedExternalUrl("mailto:security@example.com")).toBe(true);
   77 |   });
-  78 | 
+  78 |
   79 |   it("blocks dangerous or ambiguous external URLs", () => {
   80 |     expect(isAllowedExternalUrl("javascript:alert(1)")).toBe(false);
   81 |     expect(
@@ -272,18 +272,18 @@ Security tests validate allowed URLs and webview hardening:
   86 |     expect(isAllowedExternalUrl({ href: "https://example.com" })).toBe(false);
   87 |   });
   88 | });
-  89 | 
+  89 |
   90 | describe("Electron app navigation policy", () => {
   91 |   const rendererHtmlPath = "C:\\app\\out\\renderer\\index.html";
   92 |   const rendererUrl = pathToFileURL(rendererHtmlPath).href;
-  93 | 
+  93 |
   94 |   it("allows the packaged renderer file", () => {
   95 |     expect(isAllowedAppNavigationUrl(rendererUrl, rendererHtmlPath)).toBe(true);
   96 |     expect(
   97 |       isAllowedAppNavigationUrl(`${rendererUrl}#settings`, rendererHtmlPath),
   98 |     ).toBe(true);
   99 |   });
- 100 | 
+ 100 |
  101 |   it("allows only the configured dev server origin in dev mode", () => {
  102 |     expect(
  103 |       isAllowedAppNavigationUrl(
@@ -300,7 +300,7 @@ Security tests validate allowed URLs and webview hardening:
  114 |       ),
  115 |     ).toBe(false);
  116 |   });
- 117 | 
+ 117 |
  118 |   it("blocks navigation to other local or remote documents", () => {
  119 |     expect(
  120 |       isAllowedAppNavigationUrl(
@@ -313,14 +313,14 @@ Security tests validate allowed URLs and webview hardening:
  127 |     ).toBe(false);
  128 |   });
  129 | });
- 130 | 
+ 130 |
  131 | describe("Electron webview policy", () => {
  132 |   it("allows only loopback HTTP URLs on app-controlled ports", () => {
  133 |     expect(isAllowedWebviewUrl("http://localhost:3000")).toBe(true);
  134 |     expect(isAllowedWebviewUrl("http://127.0.0.1:65535/path")).toBe(true);
  135 |     expect(isAllowedWebviewUrl("http://[::1]:3000")).toBe(true);
  136 |   });
- 137 | 
+ 137 |
  138 |   it("blocks remote, privileged, and non-HTTP webview URLs", () => {
  139 |     expect(isAllowedWebviewUrl("https://localhost:3000")).toBe(false);
  140 |     expect(isAllowedWebviewUrl("http://example.com:3000")).toBe(false);
@@ -328,7 +328,7 @@ Security tests validate allowed URLs and webview hardening:
  142 |     expect(isAllowedWebviewUrl("file:///C:/Users/me/page.html")).toBe(false);
  143 |     expect(isAllowedWebviewUrl("javascript:alert(1)")).toBe(false);
  144 |   });
- 145 | 
+ 145 |
  146 |   it("removes privileged webview capabilities before attachment", () => {
  147 |     const webPreferences = {
  148 |       preload: "C:\\tmp\\evil-preload.js",
@@ -339,9 +339,9 @@ Security tests validate allowed URLs and webview hardening:
  153 |       webSecurity: false,
  154 |       allowRunningInsecureContent: true,
  155 |     };
- 156 | 
+ 156 |
  157 |     hardenWebviewPreferences(webPreferences);
- 158 | 
+ 158 |
  159 |     expect(webPreferences).not.toHaveProperty("preload");
  160 |     expect(webPreferences).not.toHaveProperty("preloadURL");
 ```

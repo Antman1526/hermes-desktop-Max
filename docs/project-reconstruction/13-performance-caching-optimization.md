@@ -1,6 +1,6 @@
 # 13 - Performance Optimization and Caching
 
-Generated from repository state on 2026-06-02. No secrets are included; environment-variable names are documented without values.
+Generated from repository state on 2026-06-03. No secrets are included; environment-variable names are documented without values.
 
 ## Existing Optimizations
 
@@ -19,7 +19,7 @@ Generated from repository state on 2026-06-02. No secrets are included; environm
   92 |     ssh: config.ssh,
   93 |   };
   94 | }
-  95 | 
+  95 |
   96 | export function setConnectionConfig(config: ConnectionConfig): void {
   97 |   const data = readDesktopConfig();
   98 |   data.connectionMode = config.mode;
@@ -30,7 +30,7 @@ Generated from repository state on 2026-06-02. No secrets are included; environm
  103 |   }
  104 |   writeDesktopConfig(data);
  105 | }
- 106 | 
+ 106 |
  107 | export function resolveConnectionApiKeyUpdate(
  108 |   existing: ConnectionConfig,
  109 |   mode: "local" | "remote" | "ssh",
@@ -58,7 +58,7 @@ Generated from repository state on 2026-06-02. No secrets are included; environm
  116 |       model: string;
  117 |       title: string | null;
  118 |     }>;
- 119 | 
+ 119 |
  120 |     // Index existing sessions by id once so the per-row update below is
  121 |     // O(1) instead of O(N). Without this, syncing N existing sessions
  122 |     // against N new rows is O(N²) and visibly slows app startup once a
@@ -66,7 +66,7 @@ Generated from repository state on 2026-06-02. No secrets are included; environm
  124 |     const existingById = new Map<string, CachedSession>();
  125 |     for (const s of cache.sessions) existingById.set(s.id, s);
  126 |     const newSessions: CachedSession[] = [];
- 127 | 
+ 127 |
  128 |     const refreshedIds = new Set<string>();
  129 |     for (const row of rows) {
  130 |       refreshedIds.add(row.id);
@@ -77,7 +77,7 @@ Generated from repository state on 2026-06-02. No secrets are included; environm
  135 |         if (row.title) existing.title = row.title;
  136 |         continue;
  137 |       }
- 138 | 
+ 138 |
  139 |       let title = row.title || "";
  140 |       if (!title) {
  141 |         try {
@@ -95,7 +95,7 @@ Generated from repository state on 2026-06-02. No secrets are included; environm
  153 |           title = t("sessions.newConversation", getAppLocale());
  154 |         }
  155 |       }
- 156 | 
+ 156 |
  157 |       newSessions.push({
  158 |         id: row.id,
  159 |         title,
@@ -105,7 +105,7 @@ Generated from repository state on 2026-06-02. No secrets are included; environm
  163 |         model: row.model || "",
  164 |       });
  165 |     }
- 166 | 
+ 166 |
  167 |     // Phase 2: refresh message_count for cached sessions that weren't
  168 |     // returned by the lastSync-windowed query above. Without this, an
  169 |     // old session that's still accumulating messages keeps the stale
@@ -128,12 +128,12 @@ Discovery is synchronous and recursive. This is simple and deterministic, but ca
   28 | function stableLocalModelId(path: string): string {
   29 |   return `local-file-${createHash("sha1").update(path).digest("hex").slice(0, 16)}`;
   30 | }
-  31 | 
+  31 |
   32 | export function discoverLocalModelFiles(
   33 |   roots: string[] = LOCAL_MODEL_ROOTS,
   34 | ): LocalModelFile[] {
   35 |   const found: LocalModelFile[] = [];
-  36 | 
+  36 |
   37 |   function visit(root: string, dir: string): void {
   38 |     let entries;
   39 |     try {
@@ -143,7 +143,7 @@ Discovery is synchronous and recursive. This is simple and deterministic, but ca
   43 |     } catch {
   44 |       return;
   45 |     }
-  46 | 
+  46 |
   47 |     for (const entry of entries) {
   48 |       if (entry.name.startsWith("._")) continue;
   49 |       const entryPath = join(dir, entry.name);
@@ -152,7 +152,7 @@ Discovery is synchronous and recursive. This is simple and deterministic, but ca
   52 |         continue;
   53 |       }
   54 |       if (!entry.isFile()) continue;
-  55 | 
+  55 |
   56 |       const ext = extname(entry.name).toLowerCase();
   57 |       if (!SUPPORTED_FORMATS.has(ext)) continue;
   58 |       found.push({
@@ -162,7 +162,7 @@ Discovery is synchronous and recursive. This is simple and deterministic, but ca
   62 |       });
   63 |     }
   64 |   }
-  65 | 
+  65 |
   66 |   for (const root of roots) {
 ```
 

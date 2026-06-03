@@ -1,6 +1,6 @@
 # 05 - Frontend Architecture and Components
 
-Generated from repository state on 2026-06-02. No secrets are included; environment-variable names are documented without values.
+Generated from repository state on 2026-06-03. No secrets are included; environment-variable names are documented without values.
 
 ## Renderer Stack
 
@@ -10,16 +10,16 @@ The renderer is a React 19 + Vite application. Tailwind CSS is loaded through th
 
 ```tsx
    1 | import "./assets/main.css";
-   2 | 
+   2 |
    3 | import { StrictMode } from "react";
    4 | import { createRoot } from "react-dom/client";
    5 | import App from "./App";
    6 | import { I18nProvider } from "./components/I18nProvider";
    7 | import { initAnalytics } from "./utils/analytics";
-   8 | 
+   8 |
    9 | // Initialize analytics (privacy-first, only if user consented and key is configured)
   10 | initAnalytics();
-  11 | 
+  11 |
   12 | createRoot(document.getElementById("root")!).render(
   13 |   <StrictMode>
   14 |     <I18nProvider>
@@ -40,13 +40,13 @@ The renderer is a React 19 + Vite application. Tailwind CSS is loaded through th
    7 | import Layout from "./screens/Layout/Layout";
    8 | import SplashScreen from "./screens/SplashScreen/SplashScreen";
    9 | import { captureScreenView } from "./utils/analytics";
-  10 | 
+  10 |
   11 | type Screen = "splash" | "welcome" | "installing" | "setup" | "main";
-  12 | 
+  12 |
   13 | // Minimum time the splash stays visible so the brand animation plays
   14 | // through. Tracks the splash logo fade-in duration in main.css.
   15 | const SPLASH_MIN_MS = 1300;
-  16 | 
+  16 |
   17 | function App(): React.JSX.Element {
   18 |   const [screen, setScreen] = useState<Screen>("splash");
   19 |   const [installError, setInstallError] = useState<string | null>(null);
@@ -60,18 +60,18 @@ The renderer is a React 19 + Vite application. Tailwind CSS is loaded through th
   27 |   // loop on every launch (#130).
   28 |   const [verifyWarning, setVerifyWarning] = useState(false);
   29 |   const isMac = window.electron?.process?.platform === "darwin";
-  30 | 
+  30 |
   31 |   const runInstallCheck = useCallback(async () => {
   32 |     const startedAt = Date.now();
   33 |     let next: Screen = "welcome";
   34 |     let error: string | null = null;
   35 |     let isRemote = false;
-  36 | 
+  36 |
   37 |     try {
   38 |       const conn = await window.hermesAPI.getConnectionConfig();
   39 |       isRemote = conn.mode === "remote" || conn.mode === "ssh";
   40 |       setConnectionMode(conn.mode);
-  41 | 
+  41 |
   42 |       if (conn.mode === "ssh" && conn.ssh) {
   43 |         // Start (or ensure) the SSH tunnel, then go straight to main
   44 |         try {
@@ -102,16 +102,16 @@ The renderer is a React 19 + Vite application. Tailwind CSS is loaded through th
   69 |     } catch {
   70 |       next = "welcome";
   71 |     }
-  72 | 
+  72 |
   73 |     if (error) setInstallError(error);
-  74 | 
+  74 |
   75 |     const elapsed = Date.now() - startedAt;
   76 |     const wait = Math.max(0, SPLASH_MIN_MS - elapsed);
   77 |     if (wait > 0) {
   78 |       await new Promise((r) => setTimeout(r, wait));
   79 |     }
   80 |     setScreen(next);
-  81 | 
+  81 |
   82 |     // Lazy deep-verify in the background after the UI is up. If the
   83 |     // install is broken, surface the warning then — don't block startup.
   84 |     //
@@ -128,57 +128,57 @@ The renderer is a React 19 + Vite application. Tailwind CSS is loaded through th
   95 |       });
   96 |     }
   97 |   }, []);
-  98 | 
+  98 |
   99 |   useEffect(() => {
  100 |     runInstallCheck();
  101 |   }, [runInstallCheck]);
- 102 | 
+ 102 |
  103 |   // Track screen views for analytics
  104 |   useEffect(() => {
  105 |     captureScreenView(screen);
  106 |   }, [screen]);
- 107 | 
+ 107 |
  108 |   const handleSplashFinished = useCallback(() => {
  109 |     /* splash transition is driven by the install check, not a timer */
  110 |   }, []);
- 111 | 
+ 111 |
  112 |   function handleInstallComplete(): void {
  113 |     setInstallError(null);
  114 |     setScreen("setup");
  115 |   }
- 116 | 
+ 116 |
  117 |   function handleInstallFailed(error: string): void {
  118 |     setInstallError(error);
  119 |     setScreen("welcome");
  120 |   }
- 121 | 
+ 121 |
  122 |   function handleRetryInstall(): void {
  123 |     setInstallError(null);
  124 |     setScreen("installing");
  125 |   }
- 126 | 
+ 126 |
  127 |   function handleRecheck(): void {
  128 |     setInstallError(null);
  129 |     setScreen("splash");
  130 |     runInstallCheck();
  131 |   }
- 132 | 
+ 132 |
  133 |   async function handleSwitchToLocal(): Promise<void> {
  134 |     await window.hermesAPI.setConnectionConfig("local", "", "");
  135 |     setConnectionMode("local");
  136 |     handleRecheck();
  137 |   }
- 138 | 
+ 138 |
  139 |   function handleVerifyReinstall(): void {
  140 |     setVerifyWarning(false);
  141 |     setInstallError(null);
  142 |     setScreen("installing");
  143 |   }
- 144 | 
+ 144 |
  145 |   function handleDismissVerifyWarning(): void {
  146 |     setVerifyWarning(false);
  147 |   }
- 148 | 
+ 148 |
  149 |   function renderScreen(): React.JSX.Element {
  150 |     switch (screen) {
  151 |       case "splash":
@@ -227,7 +227,7 @@ Representative hook:
    2 | import { PROVIDERS } from "../../../constants";
    3 | import { useI18n } from "../../../components/useI18n";
    4 | import type { ModelGroup } from "../types";
-   5 | 
+   5 |
    6 | interface UseModelConfigResult {
    7 |   currentModel: string;
    8 |   currentProvider: string;
@@ -242,7 +242,7 @@ Representative hook:
   17 |     options?: { launchable?: boolean; modelPath?: string },
   18 |   ) => Promise<void>;
   19 | }
-  20 | 
+  20 |
   21 | function groupModelsByProvider(
   22 |   models: {
   23 |     provider: string;
@@ -277,14 +277,14 @@ Representative hook:
   52 |   }
   53 |   return Array.from(groupMap.values());
   54 | }
-  55 | 
+  55 |
   56 | export function useModelConfig(profile?: string): UseModelConfigResult {
   57 |   const { t } = useI18n();
   58 |   const [currentModel, setCurrentModel] = useState("");
   59 |   const [currentProvider, setCurrentProvider] = useState("auto");
   60 |   const [currentBaseUrl, setCurrentBaseUrl] = useState("");
   61 |   const [modelGroups, setModelGroups] = useState<ModelGroup[]>([]);
-  62 | 
+  62 |
   63 |   const reload = useCallback(async (): Promise<void> => {
   64 |     const [mc, savedModels] = await Promise.all([
   65 |       window.hermesAPI.getModelConfig(profile),
@@ -295,13 +295,13 @@ Representative hook:
   70 |     setCurrentBaseUrl(mc.baseUrl);
   71 |     setModelGroups(groupModelsByProvider(savedModels));
   72 |   }, [profile]);
-  73 | 
+  73 |
   74 |   // Initial load + reload whenever the profile changes (canonical
   75 |   // load-on-mount; setState happens inside `reload` via an awaited IPC call).
   76 |   useEffect(() => {
   77 |     reload();
   78 |   }, [reload]);
-  79 | 
+  79 |
   80 |   const selectModel = useCallback(
   81 |     async (
   82 |       provider: string,
@@ -335,7 +335,7 @@ Representative hook:
  110 |     },
  111 |     [profile],
  112 |   );
- 113 | 
+ 113 |
  114 |   const displayModel = useMemo(
  115 |     () =>
  116 |       currentModel
@@ -345,7 +345,7 @@ Representative hook:
  120 |           : t("chat.noModel"),
  121 |     [currentModel, currentProvider, t],
  122 |   );
- 123 | 
+ 123 |
  124 |   return {
  125 |     currentModel,
  126 |     currentProvider,
@@ -367,12 +367,12 @@ The Paperclip screen is a compact example of renderer to IPC flow: load status/c
    1 | import { useCallback, useEffect, useState } from "react";
    2 | import { ExternalLink, Play, Refresh, Spinner, Stop } from "../../assets/icons";
    3 | import { useI18n } from "../../components/useI18n";
-   4 | 
+   4 |
    5 | interface PaperclipConfig {
    6 |   serverUrl: string;
    7 |   telemetryDisabled: boolean;
    8 | }
-   9 | 
+   9 |
   10 | interface PaperclipStatus {
   11 |   serverUrl: string;
   12 |   running: boolean;
@@ -381,7 +381,7 @@ The Paperclip screen is a compact example of renderer to IPC flow: load status/c
   15 |   launcherDetail: string | null;
   16 |   health: "ok" | "unreachable";
   17 | }
-  18 | 
+  18 |
   19 | function Paperclip(): React.JSX.Element {
   20 |   const { t } = useI18n();
   21 |   const [config, setConfig] = useState<PaperclipConfig>({
@@ -396,12 +396,12 @@ The Paperclip screen is a compact example of renderer to IPC flow: load status/c
   30 |   const [messageType, setMessageType] = useState<"success" | "error">(
   31 |     "success",
   32 |   );
-  33 | 
+  33 |
   34 |   const refresh = useCallback(async (): Promise<void> => {
   35 |     const nextStatus = await window.hermesAPI.paperclipStatus();
   36 |     setStatus(nextStatus);
   37 |   }, []);
-  38 | 
+  38 |
   39 |   useEffect(() => {
   40 |     let mounted = true;
   41 |     Promise.all([
@@ -420,7 +420,7 @@ The Paperclip screen is a compact example of renderer to IPC flow: load status/c
   54 |       mounted = false;
   55 |     };
   56 |   }, []);
-  57 | 
+  57 |
   58 |   async function handleSave(): Promise<void> {
   59 |     setSaving(true);
   60 |     setMessage(null);
@@ -437,7 +437,7 @@ The Paperclip screen is a compact example of renderer to IPC flow: load status/c
   71 |       setSaving(false);
   72 |     }
   73 |   }
-  74 | 
+  74 |
   75 |   async function handleStart(): Promise<void> {
   76 |     setAction("starting");
   77 |     setMessage(null);
@@ -454,7 +454,7 @@ The Paperclip screen is a compact example of renderer to IPC flow: load status/c
   88 |         : result.error || t("paperclip.startFailed"),
   89 |     );
   90 |   }
-  91 | 
+  91 |
   92 |   async function handleStop(): Promise<void> {
   93 |     setAction("stopping");
   94 |     setMessage(null);
@@ -468,14 +468,14 @@ The Paperclip screen is a compact example of renderer to IPC flow: load status/c
  102 |         : result.error || t("paperclip.stopFailed"),
  103 |     );
  104 |   }
- 105 | 
+ 105 |
  106 |   const running = status?.running ?? false;
  107 |   const managed = status?.managed ?? false;
- 108 | 
+ 108 |
  109 |   return (
  110 |     <div className="settings-container">
  111 |       <h1 className="settings-header">{t("paperclip.title")}</h1>
- 112 | 
+ 112 |
  113 |       <div className="settings-section">
  114 |         <div className="settings-section-title">{t("paperclip.status")}</div>
  115 |         {loading ? (

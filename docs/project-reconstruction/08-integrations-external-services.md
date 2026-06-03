@@ -1,6 +1,6 @@
 # 08 - Integration Points and External Services
 
-Generated from repository state on 2026-06-02. No secrets are included; environment-variable names are documented without values.
+Generated from repository state on 2026-06-03. No secrets are included; environment-variable names are documented without values.
 
 ## Hermes Agent
 
@@ -36,14 +36,14 @@ Paperclip is managed as a sidecar at `http://127.0.0.1:3100` by default.
    4 | import https from "https";
    5 | import { join } from "path";
    6 | import { HERMES_HOME, getEnhancedPath } from "./installer";
-   7 | 
+   7 |
    8 | export const DEFAULT_PAPERCLIP_URL = "http://127.0.0.1:3100";
-   9 | 
+   9 |
   10 | export interface PaperclipConfig {
   11 |   serverUrl: string;
   12 |   telemetryDisabled: boolean;
   13 | }
-  14 | 
+  14 |
   15 | export interface PaperclipStatus {
   16 |   serverUrl: string;
   17 |   running: boolean;
@@ -52,13 +52,13 @@ Paperclip is managed as a sidecar at `http://127.0.0.1:3100` by default.
   20 |   launcherDetail: string | null;
   21 |   health: "ok" | "unreachable";
   22 | }
-  23 | 
+  23 |
   24 | let paperclipProcess: ChildProcess | null = null;
-  25 | 
+  25 |
   26 | function desktopConfigFile(): string {
   27 |   return join(HERMES_HOME, "desktop.json");
   28 | }
-  29 | 
+  29 |
   30 | function readDesktopConfig(): Record<string, unknown> {
   31 |   try {
   32 |     const file = desktopConfigFile();
@@ -68,7 +68,7 @@ Paperclip is managed as a sidecar at `http://127.0.0.1:3100` by default.
   36 |     return {};
   37 |   }
   38 | }
-  39 | 
+  39 |
   40 | function writeDesktopConfig(data: Record<string, unknown>): void {
   41 |   if (!existsSync(HERMES_HOME)) {
   42 |     mkdirSync(HERMES_HOME, { recursive: true });
