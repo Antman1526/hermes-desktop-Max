@@ -1,6 +1,6 @@
 # 11 - Build and Deployment Pipeline
 
-Generated from repository state on 2026-06-03. No secrets are included; environment-variable names are documented without values.
+Generated from repository state on 2026-06-04. No secrets are included; environment-variable names are documented without values.
 
 ## Build Scripts
 
@@ -19,7 +19,7 @@ Generated from repository state on 2026-06-03. No secrets are included; environm
   "postinstall": "electron-builder install-app-deps",
   "build:unpack": "npm run build && electron-builder --dir",
   "build:win": "npm run build && electron-builder --win",
-  "build:mac": "electron-vite build && electron-builder --mac",
+  "build:mac": "npm run build && electron-builder --mac dmg --arm64 --publish never -c.mac.notarize=false",
   "build:linux": "electron-vite build && electron-builder --linux",
   "build:rpm": "npm run build && electron-builder --linux rpm",
   "test:watch": "vitest"
@@ -35,15 +35,15 @@ Generated from repository state on 2026-06-03. No secrets are included; environm
 
 ## Packaging Targets
 
-- macOS: DMG, hardened runtime, entitlements, notarization enabled by config.
-- Windows: NSIS setup and portable executable, `hermes-agent.exe`.
+- macOS: ARM64 DMG, hardened runtime, entitlements, notarization disabled for local developer packaging.
+- Windows: NSIS setup and portable executable, `hermes-desktop-max.exe`.
 - Linux: AppImage, Snap, Deb, RPM.
 
 ## Packaging Configuration
 
 ```yaml
-appId: com.nousresearch.hermes
-productName: Hermes Agent
+appId: com.antman.hermes-desktop-max
+productName: Hermes Desktop Max
 directories:
   buildResources: build
 files:
@@ -67,7 +67,7 @@ files:
 asarUnpack:
   - resources/**
 win:
-  executableName: hermes-agent
+  executableName: hermes-desktop-max
   target:
     - nsis
     - portable
@@ -81,7 +81,7 @@ nsis:
   oneClick: true
   perMachine: false
 mac:
-  artifactName: ${name}-${version}-${arch}-${os}.${ext}
+  artifactName: hermes-desktop-max-${version}-${arch}-${os}.${ext}
   icon: build/icon.icns
   entitlements: build/entitlements.mac.plist
   entitlementsInherit: build/entitlements.mac.inherit.plist
@@ -92,9 +92,9 @@ mac:
     - NSDownloadsFolderUsageDescription: Application requests access to the user's Downloads folder.
   hardenedRuntime: true
   gatekeeperAssess: false
-  notarize: true
+  notarize: false
 dmg:
-  artifactName: ${name}-${version}-${arch}.${ext}
+  artifactName: hermes-desktop-max-${version}-${arch}.${ext}
 linux:
   target:
     - AppImage
@@ -102,7 +102,7 @@ linux:
     - deb
     - rpm
   maintainer: electronjs.org
-  vendor: Nous Research
+  vendor: Antman
   category: Utility
   synopsis: Self-improving AI assistant desktop app
   description: >-
@@ -123,8 +123,8 @@ rpm:
 npmRebuild: false
 publish:
   provider: github
-  owner: fathah
-  repo: hermes-desktop
+  owner: Antman1526
+  repo: hermes-desktop-Max
 ```
 
 ## Winget
@@ -136,7 +136,8 @@ publish:
 Local build machines without signing credentials can produce artifacts by overriding code signing/notarization:
 
 ```bash
-CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac dmg --arm64 --publish never -c.mac.notarize=false
+npm run build:mac
+CSC_IDENTITY_AUTO_DISCOVERY=false npm run build:mac
 CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --win nsis --x64 --publish never
 ```
 
@@ -146,7 +147,8 @@ Unsigned artifacts install but trigger Gatekeeper/SmartScreen warnings.
 
 Expected artifact names:
 
-- `hermes-desktop-0.5.2-arm64.dmg`
+- `hermes-desktop-max-0.5.2-arm64.dmg`
+- `Hermes Desktop Max.app`
 - `hermes-desktop-0.5.2-setup.exe`
 - `hermes-desktop-0.5.2-portable.exe`
 - `hermes-desktop-0.5.2.AppImage`
@@ -156,5 +158,4 @@ Expected artifact names:
 ## Areas for Review
 
 - Should the project add CI jobs for typecheck/test/package matrix?
-- Should GitHub publishing point to `Antman1526/hermes-desktop-Max` for this fork instead of upstream `fathah/hermes-desktop`?
 - Should package artifacts include SBOM/checksums for local install verification?

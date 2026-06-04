@@ -1,5 +1,5 @@
 import { createHash } from "crypto";
-import { existsSync, readdirSync } from "fs";
+import { existsSync, readdirSync, statSync } from "fs";
 import { basename, extname, join } from "path";
 import { homedir } from "os";
 import type { SavedModel } from "./models";
@@ -17,6 +17,7 @@ export interface LocalModelFile {
 
 const SUPPORTED_FORMATS = new Set([".gguf", ".safetensors"]);
 const DEFAULT_LOCAL_BASE_URL = "http://localhost:8080/v1";
+const MIN_LOCAL_MODEL_BYTES = 1 * 1024 * 1024;
 
 function modelNameFromPath(path: string): string {
   const withoutExt = basename(path, extname(path));
@@ -55,6 +56,11 @@ export function discoverLocalModelFiles(
 
       const ext = extname(entry.name).toLowerCase();
       if (!SUPPORTED_FORMATS.has(ext)) continue;
+      try {
+        if (statSync(entryPath).size < MIN_LOCAL_MODEL_BYTES) continue;
+      } catch {
+        continue;
+      }
       found.push({
         path: entryPath,
         root,
@@ -79,8 +85,82 @@ export function buildLocalModelEntries(files: LocalModelFile[]): SavedModel[] {
     baseUrl: DEFAULT_LOCAL_BASE_URL,
     source: "local-file",
     modelPath: file.path,
+    modelRoot: file.root,
     modelFormat: file.format,
     launchable: file.format === "gguf",
+    available: true,
+    rootAvailable: true,
     createdAt: Date.now(),
   }));
+}
+
+function inferRoot(
+  modelPath: string | undefined,
+  roots: string[],
+): string | undefined {
+  if (!modelPath) return undefined;
+  return roots.find(
+    (root) => modelPath === root || modelPath.startsWith(`${root}/`),
+  );
+}
+
+export function mergeDiscoveredLocalModelEntries(
+  existing: SavedModel[],
+  {
+    discovered,
+    roots = LOCAL_MODEL_ROOTS,
+  }: { discovered: SavedModel[]; roots?: string[] },
+): SavedModel[] {
+  const discoveredByModel = new Map(
+    discovered.map((entry) => [`${entry.provider}:${entry.model}`, entry]),
+  );
+  const seen = new Set<string>();
+
+  const reconciled = existing.map((entry) => {
+    if (entry.source !== "local-file") return entry;
+
+    const key = `${entry.provider}:${entry.model}`;
+    const fresh = discoveredByModel.get(key);
+    if (fresh) {
+      seen.add(key);
+      return {
+        ...entry,
+        baseUrl: fresh.baseUrl,
+        modelPath: fresh.modelPath,
+        modelRoot: fresh.modelRoot,
+        modelFormat: fresh.modelFormat,
+        launchable: fresh.launchable,
+        available: true,
+        rootAvailable: true,
+        unavailableReason: undefined,
+      };
+    }
+
+    const modelRoot = entry.modelRoot || inferRoot(entry.modelPath, roots);
+    const rootAvailable = modelRoot ? existsSync(modelRoot) : false;
+    const unavailableReason =
+      modelRoot && !rootAvailable
+        ? `Model folder is not mounted: ${modelRoot}`
+        : `Model file is missing: ${entry.modelPath || entry.model}`;
+
+    return {
+      ...entry,
+      modelRoot,
+      available: false,
+      rootAvailable,
+      unavailableReason,
+    };
+  });
+
+  for (const entry of discovered) {
+    const key = `${entry.provider}:${entry.model}`;
+    if (
+      !seen.has(key) &&
+      !existing.some((m) => `${m.provider}:${m.model}` === key)
+    ) {
+      reconciled.push(entry);
+    }
+  }
+
+  return reconciled;
 }

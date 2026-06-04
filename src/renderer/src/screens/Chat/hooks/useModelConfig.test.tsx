@@ -25,6 +25,7 @@ describe("useModelConfig", () => {
   const startLocalModelServer = vi.fn();
 
   beforeEach(() => {
+    vi.clearAllMocks();
     getModelConfig.mockResolvedValue({
       provider: "auto",
       model: "",
@@ -71,5 +72,30 @@ describe("useModelConfig", () => {
       "http://localhost:8081/v1",
       undefined,
     );
+  });
+
+  it("does not select unavailable local file models", async () => {
+    const { result } = renderHook(() => useModelConfig());
+
+    await expect(
+      act(async () => {
+        await result.current.selectModel(
+          "custom",
+          "/Volumes/MainStore/Development/AI_Models/GGUF/Hermes.gguf",
+          "http://localhost:8080/v1",
+          {
+            launchable: true,
+            modelPath:
+              "/Volumes/MainStore/Development/AI_Models/GGUF/Hermes.gguf",
+            available: false,
+            unavailableReason:
+              "Model folder is not mounted: /Volumes/MainStore/Development/AI_Models",
+          },
+        );
+      }),
+    ).rejects.toThrow("Model folder is not mounted");
+
+    expect(startLocalModelServer).not.toHaveBeenCalled();
+    expect(setModelConfig).not.toHaveBeenCalled();
   });
 });

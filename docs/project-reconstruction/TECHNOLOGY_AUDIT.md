@@ -1,6 +1,6 @@
 # Hermes Desktop Max - Technology Audit
 
-Generated from repository state on 2026-06-03. This audit identifies technologies, frameworks, libraries, tools, languages, and services used by this codebase and explains their role in this project.
+Generated from repository state on 2026-06-04. This audit identifies technologies, frameworks, libraries, tools, languages, and services used by this codebase and explains their role in this project.
 
 ## Languages and Runtimes
 
@@ -50,10 +50,10 @@ Generated from repository state on 2026-06-03. This audit identifies technologie
 
 ## Build, Packaging, and Release
 
-- **electron-builder** - DMG, NSIS, portable EXE, AppImage, Snap, Deb, RPM packaging and app dependency install.
+- **electron-builder** - builds the branded Hermes Desktop Max app, including `hermes-desktop-max-0.5.2-arm64.dmg`, NSIS, portable EXE, AppImage, Snap, Deb, RPM packaging, and app dependency install.
 - **NSIS** - Windows installer target through electron-builder.
 - **DMG tooling / hdiutil** - macOS disk image creation.
-- **codesign / notarization** - macOS signing/notarization path configured by electron-builder.
+- **codesign / notarization controls** - electron-builder can sign with local identities; this fork's local `build:mac` disables notarization for developer DMG output.
 - **Winget manifests** - generated from templates under `build/winget`.
 
 ## Testing and Quality
@@ -76,7 +76,7 @@ Generated from repository state on 2026-06-03. This audit identifies technologie
 - **OpenRouter, Anthropic, OpenAI, Google Gemini, xAI, Nous, Qwen, MiniMax, Hugging Face** - primary model provider integrations.
 - **Groq, DeepSeek, Together, Fireworks, Cerebras, Mistral, Perplexity** - OpenAI-compatible hosted endpoints.
 - **LM Studio, Atomic Chat, Ollama, vLLM, llama.cpp, Docker Model Runner** - local OpenAI-compatible model runtimes.
-- **llama-server** - launched for discovered GGUF local model files at `http://localhost:8080/v1`.
+- **llama-server** - launched for available discovered GGUF local model files at `http://localhost:8080/v1`; missing binaries surface a `brew install llama.cpp` remediation message.
 - **Paperclip AI** - sidecar control-plane server launched through `npx paperclipai run`.
 - **OpenChronicle** - memory provider through Streamable HTTP MCP endpoint.
 - **Honcho, Hindsight, Mem0, RetainDB, Supermemory, OpenViking, ByteRover** - optional memory providers.
@@ -98,3 +98,9 @@ Generated from repository state on 2026-06-03. This audit identifies technologie
 - **rollup via Vite/electron-vite** - bundle mechanics.
 - **ESLint flat config** - modern lint configuration format.
 - **entitlements plist files** - macOS runtime permissions.
+
+## Areas for Review
+
+- Which dependencies are runtime-critical versus legacy or unused, and can any UI/icon packages be consolidated?
+- Should local model support standardize on one runtime abstraction that can cover `llama-server`, Ollama, LM Studio, and Docker Model Runner?
+- Should release tooling add checksums, SBOM generation, and fork-specific GitHub publishing validation?

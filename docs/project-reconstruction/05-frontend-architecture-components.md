@@ -1,6 +1,6 @@
 # 05 - Frontend Architecture and Components
 
-Generated from repository state on 2026-06-03. No secrets are included; environment-variable names are documented without values.
+Generated from repository state on 2026-06-04. No secrets are included; environment-variable names are documented without values.
 
 ## Renderer Stack
 
@@ -216,7 +216,7 @@ Chat is decomposed into display components, input components, hooks, and utiliti
 - `Chat.tsx` coordinates state and flow.
 - `ChatInput.tsx` manages text, attachments, slash commands, and keyboard actions.
 - `MessageList.tsx` and `MessageRow.tsx` render transcript items.
-- `ModelPicker.tsx` selects provider/model and triggers local server startup for launchable models.
+- `ModelPicker.tsx` selects provider/model, disables unavailable local-file entries, and triggers local server startup for launchable GGUF models.
 - `useChatIPC.ts` wraps main-process chat calls.
 - `useModelConfig.ts` loads/saves model config.
 
@@ -239,7 +239,12 @@ Representative hook:
   14 |     provider: string,
   15 |     model: string,
   16 |     baseUrl: string,
-  17 |     options?: { launchable?: boolean; modelPath?: string },
+  17 |     options?: {
+  18 |       launchable?: boolean;
+  19 |       modelPath?: string;
+  20 |       available?: boolean;
+  21 |       unavailableReason?: string;
+  22 |     },
   18 |   ) => Promise<void>;
   19 | }
   20 |
@@ -251,8 +256,12 @@ Representative hook:
   26 |     baseUrl?: string;
   27 |     source?: "default" | "custom-provider" | "local-file";
   28 |     modelPath?: string;
-  29 |     modelFormat?: "gguf" | "safetensors";
-  30 |     launchable?: boolean;
+  29 |     modelRoot?: string;
+  30 |     modelFormat?: "gguf" | "safetensors";
+  31 |     launchable?: boolean;
+  32 |     available?: boolean;
+  33 |     rootAvailable?: boolean;
+  34 |     unavailableReason?: string;
   31 |   }[],
   32 | ): ModelGroup[] {
   33 |   const groupMap = new Map<string, ModelGroup>();
@@ -271,8 +280,12 @@ Representative hook:
   46 |       baseUrl: m.baseUrl || "",
   47 |       source: m.source,
   48 |       modelPath: m.modelPath,
-  49 |       modelFormat: m.modelFormat,
-  50 |       launchable: m.launchable,
+  49 |       modelRoot: m.modelRoot,
+  50 |       modelFormat: m.modelFormat,
+  51 |       launchable: m.launchable,
+  52 |       available: m.available,
+  53 |       rootAvailable: m.rootAvailable,
+  54 |       unavailableReason: m.unavailableReason,
   51 |     });
   52 |   }
   53 |   return Array.from(groupMap.values());
@@ -307,7 +320,12 @@ Representative hook:
   82 |       provider: string,
   83 |       model: string,
   84 |       baseUrl: string,
-  85 |       options?: { launchable?: boolean; modelPath?: string },
+  85 |       options?: {
+  86 |         launchable?: boolean;
+  87 |         modelPath?: string;
+  88 |         available?: boolean;
+  89 |         unavailableReason?: string;
+  90 |       },
   86 |     ): Promise<void> => {
   87 |       // Named providers (deepseek, groq, anthropic, …) have a hardcoded
   88 |       // canonical base_url in `hermes-agent`'s PROVIDER_REGISTRY.  A stored
@@ -316,14 +334,21 @@ Representative hook:
   91 |       // endpoint) would route the request to the wrong host.  Drop the
   92 |       // baseUrl whenever the entry isn't `custom`; the gateway falls back
   93 |       // to the provider's canonical URL.
-  94 |       const effectiveBaseUrl = provider === "custom" ? baseUrl : "";
-  95 |       if (options?.launchable && options.modelPath) {
-  96 |         const status = await window.hermesAPI.startLocalModelServer(
-  97 |           options.modelPath,
-  98 |         );
-  99 |         if (status.error) throw new Error(status.error);
+  94 |       let effectiveBaseUrl = provider === "custom" ? baseUrl : "";
+  95 |       if (options?.available === false) {
+  96 |         // Intent: keep unavailable local models visible, but prevent routing chat to dead files.
+  97 |         throw new Error(
+  98 |           options.unavailableReason || "Local model is unavailable.",
+  99 |         );
  100 |       }
- 101 |       await window.hermesAPI.setModelConfig(
+ 101 |       if (options?.launchable && options.modelPath) {
+ 102 |         const status = await window.hermesAPI.startLocalModelServer(
+ 103 |           options.modelPath,
+ 104 |         );
+ 105 |         if (status.error) throw new Error(status.error);
+ 106 |         effectiveBaseUrl = status.baseUrl;
+ 107 |       }
+ 108 |       await window.hermesAPI.setModelConfig(
  102 |         provider,
  103 |         model,
  104 |         effectiveBaseUrl,

@@ -7,6 +7,7 @@ import {
   isLocalModelServerHealthy,
   isDiscoveredLocalModelPath,
   isLaunchableLocalModel,
+  LOCAL_MODEL_SERVER_MISSING_LLAMA_HINT,
   resolveLlamaServerCommand,
   waitForLocalModelServerReady,
 } from "../src/main/local-model-server";
@@ -50,6 +51,13 @@ describe("local model server launcher helpers", () => {
         (candidate) => candidate === "/opt/homebrew/bin/llama-server",
       ),
     ).toBe("/opt/homebrew/bin/llama-server");
+  });
+
+  it("provides an actionable install hint when llama-server is missing", () => {
+    expect(LOCAL_MODEL_SERVER_MISSING_LLAMA_HINT).toContain(
+      "brew install llama.cpp",
+    );
+    expect(LOCAL_MODEL_SERVER_MISSING_LLAMA_HINT).toContain("llama-server");
   });
 
   it("only allows discovered GGUF model paths to launch", () => {

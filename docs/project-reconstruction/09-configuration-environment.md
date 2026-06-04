@@ -1,6 +1,6 @@
 # 09 - Configuration and Environment Variables
 
-Generated from repository state on 2026-06-03. No secrets are included; environment-variable names are documented without values.
+Generated from repository state on 2026-06-04. No secrets are included; environment-variable names are documented without values.
 
 ## Configuration Files
 
@@ -19,8 +19,8 @@ Generated from repository state on 2026-06-03. No secrets are included; environm
 ## Electron Builder Configuration
 
 ```yaml
-appId: com.nousresearch.hermes
-productName: Hermes Agent
+appId: com.antman.hermes-desktop-max
+productName: Hermes Desktop Max
 directories:
   buildResources: build
 files:
@@ -44,7 +44,7 @@ files:
 asarUnpack:
   - resources/**
 win:
-  executableName: hermes-agent
+  executableName: hermes-desktop-max
   target:
     - nsis
     - portable
@@ -58,7 +58,7 @@ nsis:
   oneClick: true
   perMachine: false
 mac:
-  artifactName: ${name}-${version}-${arch}-${os}.${ext}
+  artifactName: hermes-desktop-max-${version}-${arch}-${os}.${ext}
   icon: build/icon.icns
   entitlements: build/entitlements.mac.plist
   entitlementsInherit: build/entitlements.mac.inherit.plist
@@ -69,9 +69,9 @@ mac:
     - NSDownloadsFolderUsageDescription: Application requests access to the user's Downloads folder.
   hardenedRuntime: true
   gatekeeperAssess: false
-  notarize: true
+  notarize: false
 dmg:
-  artifactName: ${name}-${version}-${arch}.${ext}
+  artifactName: hermes-desktop-max-${version}-${arch}.${ext}
 linux:
   target:
     - AppImage
@@ -79,7 +79,7 @@ linux:
     - deb
     - rpm
   maintainer: electronjs.org
-  vendor: Nous Research
+  vendor: Antman
   category: Utility
   synopsis: Self-improving AI assistant desktop app
   description: >-
@@ -100,8 +100,8 @@ rpm:
 npmRebuild: false
 publish:
   provider: github
-  owner: fathah
-  repo: hermes-desktop
+  owner: Antman1526
+  repo: hermes-desktop-Max
 ```
 
 ## Desktop Connection Config Shape

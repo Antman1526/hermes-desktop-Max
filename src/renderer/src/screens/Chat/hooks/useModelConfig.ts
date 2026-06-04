@@ -14,7 +14,12 @@ interface UseModelConfigResult {
     provider: string,
     model: string,
     baseUrl: string,
-    options?: { launchable?: boolean; modelPath?: string },
+    options?: {
+      launchable?: boolean;
+      modelPath?: string;
+      available?: boolean;
+      unavailableReason?: string;
+    },
   ) => Promise<void>;
 }
 
@@ -26,8 +31,12 @@ function groupModelsByProvider(
     baseUrl?: string;
     source?: "default" | "custom-provider" | "local-file";
     modelPath?: string;
+    modelRoot?: string;
     modelFormat?: "gguf" | "safetensors";
     launchable?: boolean;
+    available?: boolean;
+    rootAvailable?: boolean;
+    unavailableReason?: string;
   }[],
 ): ModelGroup[] {
   const groupMap = new Map<string, ModelGroup>();
@@ -46,8 +55,12 @@ function groupModelsByProvider(
       baseUrl: m.baseUrl || "",
       source: m.source,
       modelPath: m.modelPath,
+      modelRoot: m.modelRoot,
       modelFormat: m.modelFormat,
       launchable: m.launchable,
+      available: m.available,
+      rootAvailable: m.rootAvailable,
+      unavailableReason: m.unavailableReason,
     });
   }
   return Array.from(groupMap.values());
@@ -82,7 +95,12 @@ export function useModelConfig(profile?: string): UseModelConfigResult {
       provider: string,
       model: string,
       baseUrl: string,
-      options?: { launchable?: boolean; modelPath?: string },
+      options?: {
+        launchable?: boolean;
+        modelPath?: string;
+        available?: boolean;
+        unavailableReason?: string;
+      },
     ): Promise<void> => {
       // Named providers (deepseek, groq, anthropic, …) have a hardcoded
       // canonical base_url in `hermes-agent`'s PROVIDER_REGISTRY.  A stored
@@ -92,6 +110,11 @@ export function useModelConfig(profile?: string): UseModelConfigResult {
       // baseUrl whenever the entry isn't `custom`; the gateway falls back
       // to the provider's canonical URL.
       let effectiveBaseUrl = provider === "custom" ? baseUrl : "";
+      if (options?.available === false) {
+        throw new Error(
+          options.unavailableReason || "Local model is unavailable.",
+        );
+      }
       if (options?.launchable && options.modelPath) {
         const status = await window.hermesAPI.startLocalModelServer(
           options.modelPath,

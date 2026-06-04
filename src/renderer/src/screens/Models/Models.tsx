@@ -14,13 +14,25 @@ interface SavedModel {
   baseUrl: string;
   source?: "default" | "custom-provider" | "local-file";
   modelPath?: string;
+  modelRoot?: string;
   modelFormat?: "gguf" | "safetensors";
   launchable?: boolean;
+  available?: boolean;
+  rootAvailable?: boolean;
+  unavailableReason?: string;
   createdAt: number;
 }
 
 function providerLabelKey(value: string): string {
   return PROVIDERS.options.find((p) => p.value === value)?.label || value;
+}
+
+function localStatusLabel(model: SavedModel): string | null {
+  if (model.source !== "local-file") return null;
+  if (model.available === false) {
+    return model.rootAvailable === false ? "Drive not mounted" : "Missing file";
+  }
+  return "Ready";
 }
 
 interface ModelsProps {
@@ -311,6 +323,30 @@ function Models({ visible }: ModelsProps = {}): React.JSX.Element {
               </div>
               <div className="models-card-model">{m.model}</div>
               {m.baseUrl && <div className="models-card-url">{m.baseUrl}</div>}
+              {m.source === "local-file" && (
+                <div className="models-card-badges">
+                  <span
+                    className={`models-card-badge ${
+                      m.available === false ? "warning" : "ready"
+                    }`}
+                    title={m.unavailableReason}
+                  >
+                    {localStatusLabel(m)}
+                  </span>
+                  <span
+                    className={`models-card-badge ${
+                      m.launchable ? "ready" : "muted"
+                    }`}
+                  >
+                    {m.launchable ? "Launchable GGUF" : "Manual server"}
+                  </span>
+                  {m.modelFormat && (
+                    <span className="models-card-badge muted">
+                      {m.modelFormat.toUpperCase()}
+                    </span>
+                  )}
+                </div>
+              )}
               <div className="models-card-footer">
                 {confirmDelete === m.id ? (
                   <div

@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   buildLocalModelEntries,
   discoverLocalModelFiles,
+  mergeDiscoveredLocalModelEntries,
 } from "../src/main/local-model-files";
 
 const TEST_DIR = join(tmpdir(), `hermes-local-models-${Date.now()}`);
@@ -30,18 +31,27 @@ describe("local model file discovery", () => {
       "Transformers",
       "Qwen3-Coder-30B.safetensors",
     );
-    writeFileSync(gguf, "");
+    writeFileSync(gguf, Buffer.alloc(1_100_000));
     writeFileSync(
       join(mainStore, "GGUF", "._Hermes-3-Llama-3.1-8B-Q4_K_M.gguf"),
       "",
     );
-    writeFileSync(join(mainStore, "STT.bin"), "");
-    writeFileSync(safetensors, "");
+    writeFileSync(join(mainStore, "STT.bin"), Buffer.alloc(1_100_000));
+    writeFileSync(safetensors, Buffer.alloc(1_100_000));
 
     expect(discoverLocalModelFiles([mainStore, desktop])).toEqual([
       { path: gguf, root: mainStore, format: "gguf" },
       { path: safetensors, root: desktop, format: "safetensors" },
     ]);
+  });
+
+  it("skips tiny model files that are usually incomplete downloads or LFS pointers", () => {
+    const root = join(TEST_DIR, "AI_Models");
+    mkdirSync(join(root, "GGUF"), { recursive: true });
+
+    writeFileSync(join(root, "GGUF", "broken.gguf"), "version https://git-lfs");
+
+    expect(discoverLocalModelFiles([root])).toEqual([]);
   });
 
   it("builds stable custom-provider entries that preserve local server base URL", () => {
@@ -63,6 +73,66 @@ describe("local model file discovery", () => {
         modelPath,
         modelFormat: "gguf",
         launchable: true,
+        available: true,
+        rootAvailable: true,
+        modelRoot: root,
+      }),
+    ]);
+  });
+
+  it("marks missing local-file entries unavailable without removing them", () => {
+    const mainStore = join(TEST_DIR, "MainStore", "AI_Models");
+    const desktop = join(TEST_DIR, "Desktop", "AI_Models");
+    const presentPath = join(desktop, "GGUF", "Llama-3.2-3B.gguf");
+    const unmountedPath = join(mainStore, "GGUF", "Hermes-3.gguf");
+    mkdirSync(join(desktop, "GGUF"), { recursive: true });
+    writeFileSync(presentPath, Buffer.alloc(1_100_000));
+
+    const existing = [
+      {
+        id: "cloud",
+        name: "Cloud",
+        provider: "openrouter",
+        model: "anthropic/claude",
+        baseUrl: "",
+        createdAt: 1,
+      },
+      {
+        id: "local-file-old",
+        name: "Local Hermes",
+        provider: "custom",
+        model: unmountedPath,
+        baseUrl: "http://localhost:8080/v1",
+        source: "local-file" as const,
+        modelPath: unmountedPath,
+        modelFormat: "gguf" as const,
+        modelRoot: mainStore,
+        launchable: true,
+        available: true,
+        rootAvailable: true,
+        createdAt: 2,
+      },
+    ];
+
+    const next = mergeDiscoveredLocalModelEntries(existing, {
+      discovered: buildLocalModelEntries(
+        discoverLocalModelFiles([mainStore, desktop]),
+      ),
+      roots: [mainStore, desktop],
+    });
+
+    expect(next).toEqual([
+      existing[0],
+      expect.objectContaining({
+        id: "local-file-old",
+        available: false,
+        rootAvailable: false,
+        unavailableReason: `Model folder is not mounted: ${mainStore}`,
+      }),
+      expect.objectContaining({
+        model: presentPath,
+        available: true,
+        rootAvailable: true,
       }),
     ]);
   });

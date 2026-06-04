@@ -13,6 +13,8 @@ import { pidIsAlive, safeWriteFile } from "./utils";
 
 export const LOCAL_MODEL_SERVER_PORT = 8080;
 export const LOCAL_MODEL_SERVER_BASE_URL = `http://localhost:${LOCAL_MODEL_SERVER_PORT}/v1`;
+export const LOCAL_MODEL_SERVER_MISSING_LLAMA_HINT =
+  "llama-server was not found. Install llama.cpp with `brew install llama.cpp`, or put a llama-server binary on PATH.";
 
 const PID_FILE = join(HERMES_HOME, "local-model-server.pid");
 const MODEL_FILE = join(HERMES_HOME, "local-model-server-model");
@@ -273,7 +275,7 @@ export async function startLocalModelServer(
       ...current,
       launcherAvailable: false,
       launcherPath: null,
-      error: "llama-server was not found on PATH.",
+      error: LOCAL_MODEL_SERVER_MISSING_LLAMA_HINT,
     };
   }
 

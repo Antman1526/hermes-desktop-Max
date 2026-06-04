@@ -14,7 +14,12 @@ interface ModelPickerProps {
     provider: string,
     model: string,
     baseUrl: string,
-    options?: { launchable?: boolean; modelPath?: string },
+    options?: {
+      launchable?: boolean;
+      modelPath?: string;
+      available?: boolean;
+      unavailableReason?: string;
+    },
   ) => void;
 }
 
@@ -52,7 +57,12 @@ export const ModelPicker = memo(function ModelPicker({
     provider: string,
     model: string,
     baseUrl: string,
-    options?: { launchable?: boolean; modelPath?: string },
+    options?: {
+      launchable?: boolean;
+      modelPath?: string;
+      available?: boolean;
+      unavailableReason?: string;
+    },
   ): void {
     onSelectModel(provider, model, baseUrl, options);
     setIsOpen(false);
@@ -86,19 +96,32 @@ export const ModelPicker = memo(function ModelPicker({
               {group.models.map((m) => {
                 const active =
                   currentModel === m.model && currentProvider === m.provider;
+                const unavailable =
+                  m.source === "local-file" && m.available === false;
                 return (
                   <button
                     key={`${m.provider}:${m.model}`}
-                    className={`chat-model-option ${active ? "active" : ""}`}
+                    className={`chat-model-option ${active ? "active" : ""} ${unavailable ? "unavailable" : ""}`}
+                    disabled={unavailable}
+                    title={unavailable ? m.unavailableReason : undefined}
                     onClick={() =>
                       select(m.provider, m.model, m.baseUrl, {
                         launchable: m.launchable,
                         modelPath: m.modelPath,
+                        available: m.available,
+                        unavailableReason: m.unavailableReason,
                       })
                     }
                   >
                     <span className="chat-model-option-label">{m.label}</span>
                     <span className="chat-model-option-id">{m.model}</span>
+                    {unavailable && (
+                      <span className="chat-model-option-status">
+                        {m.rootAvailable === false
+                          ? "Drive not mounted"
+                          : "Missing file"}
+                      </span>
+                    )}
                   </button>
                 );
               })}

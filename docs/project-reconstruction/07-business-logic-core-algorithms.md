@@ -1,6 +1,6 @@
 # 07 - Business Logic and Core Algorithms
 
-Generated from repository state on 2026-06-03. No secrets are included; environment-variable names are documented without values.
+Generated from repository state on 2026-06-04. No secrets are included; environment-variable names are documented without values.
 
 ## Install and Runtime Orchestration
 
@@ -42,11 +42,11 @@ URL normalization:
 
 ## Local Model Discovery Algorithm
 
-The fork scans the two configured roots recursively, ignores macOS AppleDouble `._` files, accepts `.gguf` and `.safetensors`, and converts each file into a deterministic saved model entry. GGUF files are launchable through `llama-server`; safetensors files are discoverable but not directly launched.
+The fork scans the two configured roots recursively, ignores macOS AppleDouble `._` files, skips tiny files below `1 * 1024 * 1024` bytes, accepts `.gguf` and `.safetensors`, and converts each file into a deterministic saved model entry. GGUF files are launchable through `llama-server`; safetensors files are discoverable but not directly launched.
 
 ```ts
    1 | import { createHash } from "crypto";
-   2 | import { existsSync, readdirSync } from "fs";
+   2 | import { existsSync, readdirSync, statSync } from "fs";
    3 | import { basename, extname, join } from "path";
    4 | import { homedir } from "os";
    5 | import type { SavedModel } from "./models";
@@ -64,8 +64,9 @@ The fork scans the two configured roots recursively, ignores macOS AppleDouble `
   17 |
   18 | const SUPPORTED_FORMATS = new Set([".gguf", ".safetensors"]);
   19 | const DEFAULT_LOCAL_BASE_URL = "http://localhost:8080/v1";
-  20 |
-  21 | function modelNameFromPath(path: string): string {
+  20 | const MIN_LOCAL_MODEL_BYTES = 1 * 1024 * 1024;
+  21 |
+  22 | function modelNameFromPath(path: string): string {
   22 |   const withoutExt = basename(path, extname(path));
   23 |   return (
   24 |     "Local " + withoutExt.replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim()
@@ -102,11 +103,17 @@ The fork scans the two configured roots recursively, ignores macOS AppleDouble `
   55 |
   56 |       const ext = extname(entry.name).toLowerCase();
   57 |       if (!SUPPORTED_FORMATS.has(ext)) continue;
-  58 |       found.push({
-  59 |         path: entryPath,
-  60 |         root,
-  61 |         format: ext.slice(1) as LocalModelFile["format"],
-  62 |       });
+  58 |       try {
+  59 |         // Intent: ignore partial downloads and placeholder model files.
+  60 |         if (statSync(entryPath).size < MIN_LOCAL_MODEL_BYTES) continue;
+  61 |       } catch {
+  62 |         continue;
+  63 |       }
+  64 |       found.push({
+  65 |         path: entryPath,
+  66 |         root,
+  67 |         format: ext.slice(1) as LocalModelFile["format"],
+  68 |       });
   63 |     }
   64 |   }
   65 |
@@ -117,12 +124,74 @@ The fork scans the two configured roots recursively, ignores macOS AppleDouble `
   70 |   return found;
   71 | }
   72 |
-  73 | export function buildLocalModelEntries(files: LocalModelFile[]): SavedModel[] {
-  74 |   return files.map((file) => ({
-  75 |     id: stableLocalModelId(file.path),
-  76 |     name: modelNameFromPath(file.path),
-  77 |     provider: "custom",
-  78 |     model: file.path,
+  79 | export function buildLocalModelEntries(files: LocalModelFile[]): SavedModel[] {
+  80 |   return files.map((file) => ({
+  81 |     id: stableLocalModelId(file.path),
+  82 |     name: modelNameFromPath(file.path),
+  83 |     provider: "custom",
+  84 |     model: file.path,
+  85 |     baseUrl: DEFAULT_LOCAL_BASE_URL,
+  86 |     source: "local-file",
+  87 |     modelPath: file.path,
+  88 |     modelRoot: file.root,
+  89 |     modelFormat: file.format,
+  90 |     launchable: file.format === "gguf",
+  91 |     available: true,
+  92 |     rootAvailable: true,
+  93 |     createdAt: Date.now(),
+  94 |   }));
+```
+
+Model reconciliation preserves user-visible local file entries when drives disappear. This is important for `/Volumes/MainStore/Development/AI_Models`: removing a drive should disable entries, not erase the user's model library.
+
+```ts
+ 107 | export function mergeDiscoveredLocalModelEntries(
+ 108 |   existing: SavedModel[],
+ 109 |   {
+ 110 |     discovered,
+ 111 |     roots = LOCAL_MODEL_ROOTS,
+ 112 |   }: { discovered: SavedModel[]; roots?: string[] },
+ 113 | ): SavedModel[] {
+ 114 |   const discoveredByModel = new Map(
+ 115 |     discovered.map((entry) => [`${entry.provider}:${entry.model}`, entry]),
+ 116 |   );
+ 117 |   const seen = new Set<string>();
+ 118 |
+ 119 |   const reconciled = existing.map((entry) => {
+ 120 |     if (entry.source !== "local-file") return entry;
+ 121 |
+ 122 |     const key = `${entry.provider}:${entry.model}`;
+ 123 |     const fresh = discoveredByModel.get(key);
+ 124 |     if (fresh) {
+ 125 |       seen.add(key);
+ 126 |       return {
+ 127 |         ...entry,
+ 128 |         baseUrl: fresh.baseUrl,
+ 129 |         modelPath: fresh.modelPath,
+ 130 |         modelRoot: fresh.modelRoot,
+ 131 |         modelFormat: fresh.modelFormat,
+ 132 |         launchable: fresh.launchable,
+ 133 |         available: true,
+ 134 |         rootAvailable: true,
+ 135 |         unavailableReason: undefined,
+ 136 |       };
+ 137 |     }
+ 138 |
+ 139 |     const modelRoot = entry.modelRoot || inferRoot(entry.modelPath, roots);
+ 140 |     const rootAvailable = modelRoot ? existsSync(modelRoot) : false;
+ 141 |     const unavailableReason =
+ 142 |       modelRoot && !rootAvailable
+ 143 |         ? `Model folder is not mounted: ${modelRoot}`
+ 144 |         : `Model file is missing: ${entry.modelPath || entry.model}`;
+ 145 |
+ 146 |     return {
+ 147 |       ...entry,
+ 148 |       modelRoot,
+ 149 |       available: false,
+ 150 |       rootAvailable,
+ 151 |       unavailableReason,
+ 152 |     };
+ 153 |   });
 ```
 
 ## Local Model Server Algorithm
@@ -213,7 +282,8 @@ The launcher only starts a `.gguf` file that was discovered under the configured
  206 |       ...current,
  207 |       launcherAvailable: false,
  208 |       launcherPath: null,
- 209 |       error: "llama-server was not found on PATH.",
+ 209 |       error:
+ 210 |         "llama-server was not found. Install llama.cpp with `brew install llama.cpp`, or put a llama-server binary on PATH.",
 ```
 
 ## Session Cache Algorithm

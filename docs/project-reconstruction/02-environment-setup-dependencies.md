@@ -1,6 +1,6 @@
 # 02 - Environment Setup and Dependencies
 
-Generated from repository state on 2026-06-03. No secrets are included; environment-variable names are documented without values.
+Generated from repository state on 2026-06-04. No secrets are included; environment-variable names are documented without values.
 
 ## Toolchain
 
@@ -215,5 +215,11 @@ export default defineConfig(
 ## Edge Cases
 
 - Native module rebuilds can fail if Electron headers are missing. `postinstall` runs `electron-builder install-app-deps`.
-- macOS DMG notarization requires Apple credentials; local unsigned builds must override notarization/signing.
+- macOS production notarization requires Apple credentials; this fork's default `build:mac` disables notarization for local developer DMGs.
 - Windows native install paths require `venv/Scripts/python.exe` style paths; WSL remains safer for Unix-heavy Hermes Agent scripts.
+
+## Areas for Review
+
+- Should the project pin Node and npm versions through `.nvmrc`, `.node-version`, or Volta to reduce native-module drift?
+- Should `llama.cpp`/`llama-server` be detected during setup and surfaced before the user selects a GGUF model?
+- Should the packaging prerequisites be split by target platform to avoid macOS-only signing guidance confusing Windows/Linux contributors?

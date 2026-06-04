@@ -1,6 +1,6 @@
 # 10 - Testing Strategy and Test Cases
 
-Generated from repository state on 2026-06-03. No secrets are included; environment-variable names are documented without values.
+Generated from repository state on 2026-06-04. No secrets are included; environment-variable names are documented without values.
 
 ## Test Runner
 
@@ -38,7 +38,8 @@ Top-level `tests/` covers:
 - Environment validation and connection config security.
 - Hermes API streaming, SSE parsing, token reconciliation.
 - Session decoding, session cache sync, session delete/history mapping.
-- Local model file discovery and local model server command/status.
+- Local model file discovery, incomplete-file filtering, unavailable-drive reconciliation, local model server command/status, and chat selection rejection for unavailable local models.
+- Packaging configuration for branded macOS DMG output and local non-notarized `build:mac` script behavior.
 - Paperclip URL/config/status/start/stop.
 - SSH remote path handling and tunnel config.
 - Provider detection and custom provider auto-key selection.
@@ -59,7 +60,8 @@ Local model tests validate root scanning and launcher restrictions:
    5 | import {
    6 |   buildLocalModelEntries,
    7 |   discoverLocalModelFiles,
-   8 | } from "../src/main/local-model-files";
+   8 |   mergeDiscoveredLocalModelEntries,
+   9 | } from "../src/main/local-model-files";
    9 |
   10 | const TEST_DIR = join(tmpdir(), `hermes-local-models-${Date.now()}`);
   11 |
@@ -84,13 +86,13 @@ Local model tests validate root scanning and launcher restrictions:
   30 |       "Transformers",
   31 |       "Qwen3-Coder-30B.safetensors",
   32 |     );
-  33 |     writeFileSync(gguf, "");
+  33 |     writeFileSync(gguf, Buffer.alloc(1_100_000));
   34 |     writeFileSync(
   35 |       join(mainStore, "GGUF", "._Hermes-3-Llama-3.1-8B-Q4_K_M.gguf"),
   36 |       "",
   37 |     );
-  38 |     writeFileSync(join(mainStore, "STT.bin"), "");
-  39 |     writeFileSync(safetensors, "");
+  38 |     writeFileSync(join(mainStore, "STT.bin"), Buffer.alloc(1_100_000));
+  39 |     writeFileSync(safetensors, Buffer.alloc(1_100_000));
   40 |
   41 |     expect(discoverLocalModelFiles([mainStore, desktop])).toEqual([
   42 |       { path: gguf, root: mainStore, format: "gguf" },
@@ -98,7 +100,16 @@ Local model tests validate root scanning and launcher restrictions:
   44 |     ]);
   45 |   });
   46 |
-  47 |   it("builds stable custom-provider entries that preserve local server base URL", () => {
+  47 |   it("skips tiny model files that are usually incomplete downloads or LFS pointers", () => {
+  48 |     const root = join(TEST_DIR, "AI_Models");
+  49 |     mkdirSync(join(root, "GGUF"), { recursive: true });
+  50 |
+  51 |     writeFileSync(join(root, "GGUF", "broken.gguf"), "version https://git-lfs");
+  52 |
+  53 |     expect(discoverLocalModelFiles([root])).toEqual([]);
+  54 |   });
+  55 |
+  56 |   it("builds stable custom-provider entries that preserve local server base URL", () => {
   48 |     const root = join(TEST_DIR, "AI_Models");
   49 |     const modelPath = join(root, "GGUF", "Qwen3.6-27B-Q4_K_M.gguf");
   50 |
@@ -113,6 +124,13 @@ Local model tests validate root scanning and launcher restrictions:
   59 |         provider: "custom",
   60 |         model: modelPath,
   61 |         baseUrl: "http://localhost:8080/v1",
+  62 |         source: "local-file",
+  63 |         modelPath,
+  64 |         modelRoot: root,
+  65 |         modelFormat: "gguf",
+  66 |         launchable: true,
+  67 |         available: true,
+  68 |         rootAvailable: true,
   62 |         source: "local-file",
   63 |         modelPath,
   64 |         modelFormat: "gguf",

@@ -1,6 +1,6 @@
 # 14 - Security Implementation and Best Practices
 
-Generated from repository state on 2026-06-03. No secrets are included; environment-variable names are documented without values.
+Generated from repository state on 2026-06-04. No secrets are included; environment-variable names are documented without values.
 
 ## Electron Hardening
 
@@ -137,7 +137,7 @@ Renderer input enters privileged code through IPC only. Risk areas are channels 
 
 ## Local Model Launch Restrictions
 
-The `llama-server` launcher rejects non-GGUF files and rejects paths outside discovered local model folders.
+The `llama-server` launcher rejects non-GGUF files and rejects paths outside discovered local model folders. The renderer also refuses to select local-file models marked `available: false`, so a stale model path from an unmounted drive cannot silently become the active chat target.
 
 ```ts
   31 |   launcherPath: string | null;

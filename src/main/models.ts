@@ -7,6 +7,7 @@ import DEFAULT_MODELS from "./default-models";
 import {
   buildLocalModelEntries,
   discoverLocalModelFiles,
+  mergeDiscoveredLocalModelEntries,
 } from "./local-model-files";
 
 const MODELS_FILE = join(HERMES_HOME, "models.json");
@@ -20,8 +21,12 @@ export interface SavedModel {
   apiMode?: string | null;
   source?: "default" | "custom-provider" | "local-file";
   modelPath?: string;
+  modelRoot?: string;
   modelFormat?: "gguf" | "safetensors";
   launchable?: boolean;
+  available?: boolean;
+  rootAvailable?: boolean;
+  unavailableReason?: string;
   createdAt: number;
 }
 
@@ -155,13 +160,12 @@ export function listModels(): SavedModel[] {
   }
   const models = readModels();
   const localEntries = buildLocalModelEntries(discoverLocalModelFiles());
-  const existingKeys = new Set(models.map((m) => `${m.provider}:${m.model}`));
-  const missing = localEntries.filter(
-    (m) => !existingKeys.has(`${m.provider}:${m.model}`),
-  );
-  if (missing.length === 0) return models;
-  const next = [...models, ...missing];
-  writeModels(next);
+  const next = mergeDiscoveredLocalModelEntries(models, {
+    discovered: localEntries,
+  });
+  if (JSON.stringify(next) !== JSON.stringify(models)) {
+    writeModels(next);
+  }
   return next;
 }
 

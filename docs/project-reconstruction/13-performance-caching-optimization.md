@@ -1,6 +1,6 @@
 # 13 - Performance Optimization and Caching
 
-Generated from repository state on 2026-06-03. No secrets are included; environment-variable names are documented without values.
+Generated from repository state on 2026-06-04. No secrets are included; environment-variable names are documented without values.
 
 ## Existing Optimizations
 
@@ -176,7 +176,7 @@ The UI uses local state and memoization sparingly. Large transcripts rely on com
 
 ## Areas for Review
 
-- Add async/cancellable local model scanning and cache results with file mtimes.
+- Add async/cancellable local model scanning and cache results with file mtimes. Current scanning is deterministic and skips tiny files, but it still performs synchronous recursive directory traversal and `statSync` calls on any mounted model roots.
 - Virtualize long chat transcripts and session lists.
 - Debounce repeated settings writes from form-heavy screens.
 - Split large IPC registration so startup does not import every subsystem eagerly.

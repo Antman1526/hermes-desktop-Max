@@ -1,6 +1,6 @@
 # 04 - Backend API Specifications
 
-Generated from repository state on 2026-06-03. No secrets are included; environment-variable names are documented without values.
+Generated from repository state on 2026-06-04. No secrets are included; environment-variable names are documented without values.
 
 ## API Surface
 
@@ -165,13 +165,34 @@ type ChatResponse = {
 
 | Renderer method | IPC channel | Purpose |
 | --- | --- | --- |
-| `listModels()` | `list-models` | reads defaults, custom providers, and local model files |
+| `listModels()` | `list-models` | reads saved/default/custom/local models, rescans local roots, refreshes available entries, and marks missing local entries unavailable |
 | `addModel(name, provider, model, baseUrl)` | `add-model` | appends a model if not duplicate |
 | `removeModel(id)` | `remove-model` | removes a saved model |
 | `updateModel(id, fields)` | `update-model` | partial update |
 | `localModelServerStatus()` | `local-model-server-status` | returns `llama-server` state |
 | `startLocalModelServer(modelPath)` | `start-local-model-server` | launches discovered GGUF file |
 | `stopLocalModelServer()` | `stop-local-model-server` | terminates managed server |
+
+`listModels()` returns `SavedModel[]`. Local-file entries must include these optional fields because the renderer disables unavailable models and shows model-card status badges:
+
+```ts
+type SavedModel = {
+  id: string;
+  name: string;
+  provider: string;
+  model: string;
+  baseUrl: string;
+  source?: "default" | "custom-provider" | "local-file";
+  modelPath?: string;
+  modelRoot?: string;
+  modelFormat?: "gguf" | "safetensors";
+  launchable?: boolean;
+  available?: boolean;
+  rootAvailable?: boolean;
+  unavailableReason?: string;
+  createdAt: number;
+};
+```
 
 ### Session and Cache
 

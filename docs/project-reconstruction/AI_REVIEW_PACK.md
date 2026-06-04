@@ -1,6 +1,6 @@
 # Hermes Desktop Max - AI Review Pack
 
-Generated from repository state on 2026-06-03. This condensed three-page pack is designed for another AI reviewer to quickly reason about optimization, refactoring, patterns, and architecture.
+Generated from repository state on 2026-06-04. This condensed three-page pack is designed for another AI reviewer to quickly reason about optimization, refactoring, patterns, and architecture.
 
 ## Page 1 - Project Overview
 
@@ -83,7 +83,7 @@ Intent: expose a narrow API surface and keep Node/Electron objects out of React.
   17 |
   18 | const SUPPORTED_FORMATS = new Set([".gguf", ".safetensors"]);
   19 | const DEFAULT_LOCAL_BASE_URL = "http://localhost:8080/v1";
-  20 |
+  20 | const MIN_LOCAL_MODEL_BYTES = 1 * 1024 * 1024;
   21 | function modelNameFromPath(path: string): string {
   22 |   const withoutExt = basename(path, extname(path));
   23 |   return (
@@ -121,7 +121,12 @@ Intent: expose a narrow API surface and keep Node/Electron objects out of React.
   55 |
   56 |       const ext = extname(entry.name).toLowerCase();
   57 |       if (!SUPPORTED_FORMATS.has(ext)) continue;
-  58 |       found.push({
+  58 |       try {
+  59 |         if (statSync(entryPath).size < MIN_LOCAL_MODEL_BYTES) continue;
+  60 |       } catch {
+  61 |         continue;
+  62 |       }
+  63 |       found.push({
   59 |         path: entryPath,
   60 |         root,
   61 |         format: ext.slice(1) as LocalModelFile["format"],
@@ -144,7 +149,7 @@ Intent: expose a narrow API surface and keep Node/Electron objects out of React.
   78 |     model: file.path,
 ```
 
-Intent: make Antman's local model folders first-class model options. Review concern: synchronous recursive scanning may block if external storage is slow.
+Intent: make Antman's local model folders first-class model options, skip partial downloads/LFS pointer files, and keep unavailable external-drive models visible but disabled. Review concern: synchronous recursive scanning and `statSync` calls may block if external storage is slow.
 
 ### Safe local model launching
 
@@ -316,7 +321,7 @@ Known limitations and technical debt:
 
 - What IPC handlers should be split into domain registrars first?
 - How would you design a shared provider registry that covers UI labels, env keys, install gates, and runtime routing?
-- Should local model folders be configurable in Settings, and how should the app cache scans?
+- Should local model folders be configurable in Settings, and should scans be async/cancellable with an mtime cache?
 - Which secrets should move to OS keychain first?
 - What runtime validation library or pattern should guard the preload/main IPC boundary?
 - Should session cache and desktop config files receive explicit schema versions and migrations?

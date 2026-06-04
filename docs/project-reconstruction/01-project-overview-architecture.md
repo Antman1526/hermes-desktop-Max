@@ -1,6 +1,6 @@
 # 01 - Project Overview and Architecture
 
-Generated from repository state on 2026-06-03. No secrets are included; environment-variable names are documented without values.
+Generated from repository state on 2026-06-04. No secrets are included; environment-variable names are documented without values.
 
 ## Purpose
 
@@ -9,7 +9,7 @@ Hermes Desktop is an Electron desktop shell for installing, configuring, and ope
 - `/Volumes/MainStore/Development/AI_Models`
 - `/Users/Antman/Desktop/AI_Models`
 
-It also includes Windows-oriented runtime path handling, Paperclip sidecar controls, OpenChronicle memory-provider wiring, tighter installer packaging rules, and a local `llama-server` launcher for discovered `.gguf` model files.
+It also includes Windows-oriented runtime path handling, Paperclip sidecar controls, OpenChronicle memory-provider wiring, tighter installer packaging rules, and a local `llama-server` launcher for discovered `.gguf` model files. Local model discovery keeps missing external-drive models visible but disabled, which prevents users from losing model entries when `/Volumes/MainStore` is temporarily unmounted.
 
 ## Runtime Topology
 
@@ -197,7 +197,7 @@ The Electron window is configured in the main process and protected by URL allow
 - **Single IPC facade:** renderer code talks to `window.hermesAPI` rather than importing Electron or Node. This keeps UI code portable and keeps privileged effects auditable in main/preload.
 - **Hermes-owned persistent state:** the desktop app stores desktop-specific state in `~/.hermes/desktop.json`, `~/.hermes/models.json`, profile folders, and `~/.hermes/desktop/sessions.json`. Conversation data remains in Hermes Agent's `state.db`.
 - **OpenAI-compatible routing:** local/custom providers are normalized into `OPENAI_BASE_URL` and a resolved API key so Hermes Agent can use the OpenAI-compatible path.
-- **Generated installers:** electron-builder is configured for macOS DMG, Windows NSIS/portable, Linux AppImage/Snap/Deb/RPM, and GitHub publishing.
+- **Generated installers:** electron-builder is configured for macOS DMG, Windows NSIS/portable, Linux AppImage/Snap/Deb/RPM, and GitHub publishing. The local macOS build path produces `dist/hermes-desktop-max-0.5.2-arm64.dmg` with notarization disabled for developer installation.
 
 ## Rebuild Requirements
 

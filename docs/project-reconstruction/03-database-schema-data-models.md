@@ -1,6 +1,6 @@
 # 03 - Database Schema and Data Models
 
-Generated from repository state on 2026-06-03. No secrets are included; environment-variable names are documented without values.
+Generated from repository state on 2026-06-04. No secrets are included; environment-variable names are documented without values.
 
 ## Persistent Stores
 
@@ -337,10 +337,15 @@ The session cache is profile-scoped. Default profile cache lives under `~/.herme
   19 |   baseUrl: string;
   20 |   apiMode?: string | null;
   21 |   source?: "default" | "custom-provider" | "local-file";
-  22 |   modelPath?: string;
-  23 |   modelFormat?: "gguf" | "safetensors";
-  24 |   launchable?: boolean;
-  25 |   createdAt: number;
+  22 |   source?: "default" | "custom-provider" | "local-file";
+  23 |   modelPath?: string;
+  24 |   modelRoot?: string;
+  25 |   modelFormat?: "gguf" | "safetensors";
+  26 |   launchable?: boolean;
+  27 |   available?: boolean;
+  28 |   rootAvailable?: boolean;
+  29 |   unavailableReason?: string;
+  30 |   createdAt: number;
   26 | }
   27 |
   28 | export function readModels(): SavedModel[] {
@@ -377,8 +382,27 @@ The session cache is profile-scoped. Default profile cache lives under `~/.herme
     "baseUrl": "http://localhost:8080/v1",
     "source": "local-file",
     "modelPath": "/Users/Antman/Desktop/AI_Models/Qwen-7B.gguf",
+    "modelRoot": "/Users/Antman/Desktop/AI_Models",
     "modelFormat": "gguf",
     "launchable": true,
+    "available": true,
+    "rootAvailable": true,
+    "createdAt": 1760000000000
+  },
+  {
+    "id": "local-file-<sha1-16>",
+    "name": "Local Mixtral 8x7B",
+    "provider": "custom",
+    "model": "/Volumes/MainStore/Development/AI_Models/Mixtral-8x7B.gguf",
+    "baseUrl": "http://localhost:8080/v1",
+    "source": "local-file",
+    "modelPath": "/Volumes/MainStore/Development/AI_Models/Mixtral-8x7B.gguf",
+    "modelRoot": "/Volumes/MainStore/Development/AI_Models",
+    "modelFormat": "gguf",
+    "launchable": true,
+    "available": false,
+    "rootAvailable": false,
+    "unavailableReason": "Model folder is not mounted: /Volumes/MainStore/Development/AI_Models",
     "createdAt": 1760000000000
   }
 ]
