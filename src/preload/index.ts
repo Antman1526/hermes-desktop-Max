@@ -648,6 +648,89 @@ const hermesAPI = {
     }>
   > => ipcRenderer.invoke("list-models"),
 
+  getLocalModelSettings: (): Promise<{
+    roots: string[];
+    scan: {
+      createdAt: number;
+      roots: Array<{ path: string; available: boolean; modelCount: number }>;
+      files: Array<{
+        path: string;
+        root: string;
+        format: "gguf" | "safetensors";
+        size?: number;
+        mtimeMs?: number;
+      }>;
+    };
+    runtime: {
+      llamaServerAvailable: boolean;
+      llamaServerPath: string | null;
+      installHint: string | null;
+    };
+  }> => ipcRenderer.invoke("get-local-model-settings"),
+
+  setLocalModelRoots: (
+    roots: string[],
+  ): Promise<{
+    roots: string[];
+    scan: {
+      createdAt: number;
+      roots: Array<{ path: string; available: boolean; modelCount: number }>;
+      files: Array<{
+        path: string;
+        root: string;
+        format: "gguf" | "safetensors";
+        size?: number;
+        mtimeMs?: number;
+      }>;
+    };
+    runtime: {
+      llamaServerAvailable: boolean;
+      llamaServerPath: string | null;
+      installHint: string | null;
+    };
+  }> => ipcRenderer.invoke("set-local-model-roots", roots),
+
+  resetLocalModelRoots: (): Promise<{
+    roots: string[];
+    scan: {
+      createdAt: number;
+      roots: Array<{ path: string; available: boolean; modelCount: number }>;
+      files: Array<{
+        path: string;
+        root: string;
+        format: "gguf" | "safetensors";
+        size?: number;
+        mtimeMs?: number;
+      }>;
+    };
+    runtime: {
+      llamaServerAvailable: boolean;
+      llamaServerPath: string | null;
+      installHint: string | null;
+    };
+  }> => ipcRenderer.invoke("reset-local-model-roots"),
+
+  rescanLocalModels: (): Promise<{
+    status: {
+      createdAt: number;
+      roots: Array<{ path: string; available: boolean; modelCount: number }>;
+      files: Array<{
+        path: string;
+        root: string;
+        format: "gguf" | "safetensors";
+        size?: number;
+        mtimeMs?: number;
+      }>;
+    };
+    models: Array<{ model: string; source?: string; available?: boolean }>;
+  }> => ipcRenderer.invoke("rescan-local-models"),
+
+  localModelRuntimeStatus: (): Promise<{
+    llamaServerAvailable: boolean;
+    llamaServerPath: string | null;
+    installHint: string | null;
+  }> => ipcRenderer.invoke("local-model-runtime-status"),
+
   addModel: (
     name: string,
     provider: string,

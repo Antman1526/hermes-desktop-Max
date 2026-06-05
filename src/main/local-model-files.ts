@@ -1,23 +1,37 @@
 import { createHash } from "crypto";
 import { existsSync, readdirSync, statSync } from "fs";
 import { basename, extname, join } from "path";
-import { homedir } from "os";
+import { HERMES_HOME } from "./installer";
+import { getLocalModelRoots, DEFAULT_LOCAL_MODEL_ROOTS } from "./config";
 import type { SavedModel } from "./models";
+import { safeWriteFile } from "./utils";
 
-export const LOCAL_MODEL_ROOTS = [
-  "/Volumes/MainStore/Development/AI_Models",
-  join(homedir(), "Desktop", "AI_Models"),
-];
+export const LOCAL_MODEL_ROOTS = DEFAULT_LOCAL_MODEL_ROOTS;
 
 export interface LocalModelFile {
   path: string;
   root: string;
   format: "gguf" | "safetensors";
+  size?: number;
+  mtimeMs?: number;
+}
+
+export interface LocalModelRootStatus {
+  path: string;
+  available: boolean;
+  modelCount: number;
+}
+
+export interface LocalModelScanStatus {
+  createdAt: number;
+  roots: LocalModelRootStatus[];
+  files: LocalModelFile[];
 }
 
 const SUPPORTED_FORMATS = new Set([".gguf", ".safetensors"]);
 const DEFAULT_LOCAL_BASE_URL = "http://localhost:8080/v1";
 const MIN_LOCAL_MODEL_BYTES = 1 * 1024 * 1024;
+const LOCAL_MODEL_SCAN_CACHE_FILE = join(HERMES_HOME, "local-model-scan.json");
 
 function modelNameFromPath(path: string): string {
   const withoutExt = basename(path, extname(path));
@@ -31,7 +45,7 @@ function stableLocalModelId(path: string): string {
 }
 
 export function discoverLocalModelFiles(
-  roots: string[] = LOCAL_MODEL_ROOTS,
+  roots: string[] = getLocalModelRoots(),
 ): LocalModelFile[] {
   const found: LocalModelFile[] = [];
 
@@ -57,15 +71,18 @@ export function discoverLocalModelFiles(
       const ext = extname(entry.name).toLowerCase();
       if (!SUPPORTED_FORMATS.has(ext)) continue;
       try {
-        if (statSync(entryPath).size < MIN_LOCAL_MODEL_BYTES) continue;
+        const stat = statSync(entryPath);
+        if (stat.size < MIN_LOCAL_MODEL_BYTES) continue;
+        found.push({
+          path: entryPath,
+          root,
+          format: ext.slice(1) as LocalModelFile["format"],
+          size: stat.size,
+          mtimeMs: stat.mtimeMs,
+        });
       } catch {
         continue;
       }
-      found.push({
-        path: entryPath,
-        root,
-        format: ext.slice(1) as LocalModelFile["format"],
-      });
     }
   }
 
@@ -74,6 +91,43 @@ export function discoverLocalModelFiles(
   }
 
   return found;
+}
+
+function writeLocalModelScanCache(status: LocalModelScanStatus): void {
+  try {
+    safeWriteFile(LOCAL_MODEL_SCAN_CACHE_FILE, JSON.stringify(status, null, 2));
+  } catch {
+    /* best effort */
+  }
+}
+
+export function getLocalModelScanStatus(
+  roots: string[] = getLocalModelRoots(),
+): LocalModelScanStatus {
+  const files = discoverLocalModelFiles(roots);
+  const rootsStatus = roots.map((root) => ({
+    path: root,
+    available: existsSync(root),
+    modelCount: files.filter((file) => file.root === root).length,
+  }));
+  const status = {
+    createdAt: Date.now(),
+    roots: rootsStatus,
+    files,
+  };
+  writeLocalModelScanCache(status);
+  return status;
+}
+
+export function rescanLocalModels(roots: string[] = getLocalModelRoots()): {
+  status: LocalModelScanStatus;
+  models: SavedModel[];
+} {
+  const status = getLocalModelScanStatus(roots);
+  return {
+    status,
+    models: buildLocalModelEntries(status.files),
+  };
 }
 
 export function buildLocalModelEntries(files: LocalModelFile[]): SavedModel[] {

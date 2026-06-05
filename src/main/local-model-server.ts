@@ -40,6 +40,12 @@ export interface LocalModelServerStatus {
   error?: string;
 }
 
+export interface LocalModelRuntimeStatus {
+  llamaServerAvailable: boolean;
+  llamaServerPath: string | null;
+  installHint: string | null;
+}
+
 export function isLaunchableLocalModel(modelPath: string): boolean {
   return extname(modelPath).toLowerCase() === ".gguf";
 }
@@ -91,6 +97,22 @@ function commandAvailable(command: string): boolean {
     },
   );
   return result.status === 0;
+}
+
+export function getLocalModelRuntimeStatus(
+  fileExists: (path: string) => boolean = existsSync,
+  commandIsAvailable: (command: string) => boolean = commandAvailable,
+): LocalModelRuntimeStatus {
+  const command = resolveLlamaServerCommand(fileExists);
+  const available =
+    command.includes("/") && fileExists(command)
+      ? true
+      : commandIsAvailable(command);
+  return {
+    llamaServerAvailable: available,
+    llamaServerPath: available ? command : null,
+    installHint: available ? null : LOCAL_MODEL_SERVER_MISSING_LLAMA_HINT,
+  };
 }
 
 function readPid(): number | null {

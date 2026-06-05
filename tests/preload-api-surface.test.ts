@@ -110,6 +110,21 @@ describe("New APIs from v0.8/v0.9 features", () => {
       expect(typeMethods).toContain(method);
     }
   });
+
+  it("has local model settings APIs", () => {
+    const methods = [
+      "getLocalModelSettings",
+      "setLocalModelRoots",
+      "resetLocalModelRoots",
+      "rescanLocalModels",
+      "localModelRuntimeStatus",
+    ];
+
+    for (const method of methods) {
+      expect(preloadMethods).toContain(method);
+      expect(typeMethods).toContain(method);
+    }
+  });
 });
 
 // ─── Legacy APIs still present ──────────────────────────

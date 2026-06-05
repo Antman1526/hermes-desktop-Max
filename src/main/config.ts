@@ -1,6 +1,7 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "fs";
 import { randomBytes } from "crypto";
 import { join } from "path";
+import { homedir } from "os";
 import { HERMES_HOME, expectedEnvKeyForModel } from "./installer";
 import {
   escapeRegex,
@@ -62,6 +63,41 @@ export function writeDesktopConfig(data: Record<string, unknown>): void {
     mkdirSync(HERMES_HOME, { recursive: true });
   }
   writeFileSync(desktopConfigFile(), JSON.stringify(data, null, 2), "utf-8");
+}
+
+export const DEFAULT_LOCAL_MODEL_ROOTS = [
+  "/Volumes/MainStore/Development/AI_Models",
+  join(homedir(), "Desktop", "AI_Models"),
+];
+
+export function sanitizeLocalModelRoots(roots: unknown): string[] {
+  if (!Array.isArray(roots)) return [...DEFAULT_LOCAL_MODEL_ROOTS];
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const root of roots) {
+    if (typeof root !== "string") continue;
+    const trimmed = root.trim();
+    if (!trimmed || seen.has(trimmed)) continue;
+    seen.add(trimmed);
+    result.push(trimmed);
+  }
+  return result.length > 0 ? result : [...DEFAULT_LOCAL_MODEL_ROOTS];
+}
+
+export function getLocalModelRoots(): string[] {
+  return sanitizeLocalModelRoots(readDesktopConfig().localModelRoots);
+}
+
+export function setLocalModelRoots(roots: string[]): string[] {
+  const data = readDesktopConfig();
+  const next = sanitizeLocalModelRoots(roots);
+  data.localModelRoots = next;
+  writeDesktopConfig(data);
+  return next;
+}
+
+export function resetLocalModelRoots(): string[] {
+  return setLocalModelRoots(DEFAULT_LOCAL_MODEL_ROOTS);
 }
 
 export function getConnectionConfig(): ConnectionConfig {

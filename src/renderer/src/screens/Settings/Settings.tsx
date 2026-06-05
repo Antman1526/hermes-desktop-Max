@@ -9,7 +9,12 @@ import {
   Download,
   Upload,
   FileText,
+  FolderOpen,
+  Plus,
+  RefreshCw,
+  RotateCcw,
   Send,
+  Trash2,
 } from "lucide-react";
 import {
   getAnalyticsConsent,
@@ -28,6 +33,10 @@ const LANGUAGE_NATIVE_NAMES: Record<AppLocale, string> = {
   "zh-CN": "简体中文",
   "zh-TW": "繁體中文（台灣）",
 };
+
+type LocalModelSettingsState = Awaited<
+  ReturnType<typeof window.hermesAPI.getLocalModelSettings>
+>;
 
 // Build a mask string the same width as the stored API key so the
 // "saved" state of the input looks like a key, not a constant blob.
@@ -140,6 +149,21 @@ function Settings({ profile }: { profile?: string }): React.JSX.Element {
     getAnalyticsConsent(),
   );
 
+  // Personal local model roots and runtime status
+  const [localModelSettings, setLocalModelSettings] =
+    useState<LocalModelSettingsState | null>(null);
+  const [newLocalModelRoot, setNewLocalModelRoot] = useState("");
+  const [localModelsSaving, setLocalModelsSaving] = useState(false);
+  const [localModelsScanning, setLocalModelsScanning] = useState(false);
+  const [localModelsMessage, setLocalModelsMessage] = useState<string | null>(
+    null,
+  );
+
+  const loadLocalModelSettings = useCallback(async (): Promise<void> => {
+    const settings = await window.hermesAPI.getLocalModelSettings();
+    setLocalModelSettings(settings);
+  }, []);
+
   const loadConfig = useCallback(async (): Promise<void> => {
     // Load fast config first (cached in main process)
     const [home, aVersion, conn, keyStatus] = await Promise.all([
@@ -163,6 +187,7 @@ function Settings({ profile }: { profile?: string }): React.JSX.Element {
     setSshRemotePort(conn.ssh?.remotePort ? String(conn.ssh.remotePort) : "");
     setApiServerKeyMissing(!keyStatus.hasKey);
     connLoaded.current = true;
+    void loadLocalModelSettings();
 
     // Load network settings from config.yaml
     window.hermesAPI.getConfig("network.force_ipv4", profile).then((v) => {
@@ -195,7 +220,7 @@ function Settings({ profile }: { profile?: string }): React.JSX.Element {
         }
       });
     }
-  }, [profile]);
+  }, [loadLocalModelSettings, profile]);
 
   useEffect(() => {
     void Promise.resolve().then(loadConfig);
@@ -386,6 +411,83 @@ function Settings({ profile }: { profile?: string }): React.JSX.Element {
         }
       }
     });
+  }
+
+  async function saveLocalModelRoots(roots: string[]): Promise<void> {
+    setLocalModelsSaving(true);
+    setLocalModelsMessage(null);
+    try {
+      const settings = await window.hermesAPI.setLocalModelRoots(roots);
+      setLocalModelSettings(settings);
+      setLocalModelsMessage("Local model folders saved");
+    } catch (err) {
+      setLocalModelsMessage((err as Error).message || "Could not save folders");
+    } finally {
+      setLocalModelsSaving(false);
+      setTimeout(() => setLocalModelsMessage(null), 2500);
+    }
+  }
+
+  async function handleAddLocalModelRoot(path?: string): Promise<void> {
+    const root = (path ?? newLocalModelRoot).trim();
+    if (!root) return;
+    const current = localModelSettings?.roots ?? [];
+    await saveLocalModelRoots([...current, root]);
+    setNewLocalModelRoot("");
+  }
+
+  async function handleBrowseLocalModelRoot(): Promise<void> {
+    const folder = await window.hermesAPI.selectFolder();
+    if (folder) await handleAddLocalModelRoot(folder);
+  }
+
+  async function handleRemoveLocalModelRoot(root: string): Promise<void> {
+    const current = localModelSettings?.roots ?? [];
+    await saveLocalModelRoots(current.filter((value) => value !== root));
+  }
+
+  async function handleResetLocalModelRoots(): Promise<void> {
+    setLocalModelsSaving(true);
+    setLocalModelsMessage(null);
+    try {
+      const settings = await window.hermesAPI.resetLocalModelRoots();
+      setLocalModelSettings(settings);
+      setNewLocalModelRoot("");
+      setLocalModelsMessage("Restored personal defaults");
+    } catch (err) {
+      setLocalModelsMessage(
+        (err as Error).message || "Could not reset folders",
+      );
+    } finally {
+      setLocalModelsSaving(false);
+      setTimeout(() => setLocalModelsMessage(null), 2500);
+    }
+  }
+
+  async function handleRescanLocalModels(): Promise<void> {
+    setLocalModelsScanning(true);
+    setLocalModelsMessage(null);
+    try {
+      const result = await window.hermesAPI.rescanLocalModels();
+      const runtime = await window.hermesAPI.localModelRuntimeStatus();
+      setLocalModelSettings((current) => ({
+        roots: current?.roots ?? result.status.roots.map((root) => root.path),
+        scan: result.status,
+        runtime,
+      }));
+      setLocalModelsMessage(
+        `Found ${result.status.files.length} local model file${
+          result.status.files.length === 1 ? "" : "s"
+        }`,
+      );
+    } catch (err) {
+      setLocalModelsMessage(
+        (err as Error).message || "Could not rescan models",
+      );
+    } finally {
+      setLocalModelsScanning(false);
+      setTimeout(() => setLocalModelsMessage(null), 2500);
+    }
   }
 
   async function handleUpdateHermes(): Promise<void> {
@@ -809,6 +911,142 @@ function Settings({ profile }: { profile?: string }): React.JSX.Element {
             </div>
           </>
         )}
+      </div>
+
+      <div className="settings-section">
+        <div className="settings-section-title">
+          Local Models
+          {localModelsMessage && (
+            <span className="settings-saved" style={{ marginLeft: 8 }}>
+              {localModelsMessage}
+            </span>
+          )}
+        </div>
+
+        <div className="settings-field">
+          <label className="settings-field-label">Model folders</label>
+          <div className="settings-field-hint" style={{ marginBottom: 10 }}>
+            These folders are scanned for `.gguf` and `.safetensors` files.
+            Missing external drives stay visible so their models can reappear
+            when mounted.
+          </div>
+
+          <div className="settings-local-model-roots">
+            {(localModelSettings?.roots ?? []).map((root) => {
+              const rootStatus = localModelSettings?.scan.roots.find(
+                (entry) => entry.path === root,
+              );
+              const mounted = rootStatus?.available ?? false;
+              return (
+                <div className="settings-local-model-root" key={root}>
+                  <div className="settings-local-model-root-main">
+                    <span
+                      className={`settings-local-model-status ${
+                        mounted ? "ready" : "warning"
+                      }`}
+                    >
+                      {mounted ? "Mounted" : "Missing"}
+                    </span>
+                    <span className="settings-local-model-path">{root}</span>
+                  </div>
+                  <div className="settings-local-model-root-meta">
+                    <span>{rootStatus?.modelCount ?? 0} models</span>
+                    <button
+                      className="btn btn-sm btn-secondary"
+                      type="button"
+                      onClick={() => handleRemoveLocalModelRoot(root)}
+                      disabled={localModelsSaving}
+                      title="Remove folder"
+                    >
+                      <Trash2 size={13} />
+                      Remove
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="settings-field">
+          <label className="settings-field-label">Add model folder</label>
+          <div className="settings-input-row">
+            <input
+              className="input"
+              type="text"
+              value={newLocalModelRoot}
+              onChange={(e) => setNewLocalModelRoot(e.target.value)}
+              placeholder="/Volumes/MainStore/Development/AI_Models"
+              onKeyDown={(e) => {
+                if (e.key === "Enter") void handleAddLocalModelRoot();
+              }}
+            />
+            <button
+              className="btn btn-secondary"
+              type="button"
+              onClick={handleBrowseLocalModelRoot}
+              disabled={localModelsSaving}
+              title="Browse for folder"
+            >
+              <FolderOpen size={14} />
+              Browse
+            </button>
+            <button
+              className="btn btn-primary"
+              type="button"
+              onClick={() => handleAddLocalModelRoot()}
+              disabled={localModelsSaving || !newLocalModelRoot.trim()}
+              title="Add folder"
+            >
+              <Plus size={14} />
+              Add
+            </button>
+          </div>
+        </div>
+
+        <div className="settings-field">
+          <label className="settings-field-label">Runtime</label>
+          <div className="settings-local-runtime">
+            <span
+              className={`settings-local-model-status ${
+                localModelSettings?.runtime.llamaServerAvailable
+                  ? "ready"
+                  : "warning"
+              }`}
+            >
+              llama-server{" "}
+              {localModelSettings?.runtime.llamaServerAvailable
+                ? "ready"
+                : "missing"}
+            </span>
+            <span className="settings-field-value">
+              {localModelSettings?.runtime.llamaServerPath ||
+                localModelSettings?.runtime.installHint ||
+                "Checking runtime..."}
+            </span>
+          </div>
+        </div>
+
+        <div className="settings-hermes-actions">
+          <button
+            className="btn btn-secondary"
+            type="button"
+            onClick={handleRescanLocalModels}
+            disabled={localModelsScanning}
+          >
+            <RefreshCw size={14} />
+            {localModelsScanning ? "Scanning..." : "Rescan models"}
+          </button>
+          <button
+            className="btn btn-secondary"
+            type="button"
+            onClick={handleResetLocalModelRoots}
+            disabled={localModelsSaving}
+          >
+            <RotateCcw size={14} />
+            Reset to my defaults
+          </button>
+        </div>
       </div>
 
       {openclawFound && !migrationDismissed && (

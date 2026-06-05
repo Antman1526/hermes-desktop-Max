@@ -4,6 +4,7 @@ import type { AddressInfo } from "net";
 import {
   buildLlamaServerArgs,
   findAvailableLocalModelPort,
+  getLocalModelRuntimeStatus,
   isLocalModelServerHealthy,
   isDiscoveredLocalModelPath,
   isLaunchableLocalModel,
@@ -58,6 +59,19 @@ describe("local model server launcher helpers", () => {
       "brew install llama.cpp",
     );
     expect(LOCAL_MODEL_SERVER_MISSING_LLAMA_HINT).toContain("llama-server");
+  });
+
+  it("reports local model runtime status for a missing llama-server", () => {
+    expect(
+      getLocalModelRuntimeStatus(
+        () => false,
+        () => false,
+      ),
+    ).toEqual({
+      llamaServerAvailable: false,
+      llamaServerPath: null,
+      installHint: LOCAL_MODEL_SERVER_MISSING_LLAMA_HINT,
+    });
   });
 
   it("only allows discovered GGUF model paths to launch", () => {

@@ -49,6 +49,38 @@ interface CredentialPoolEntry {
   key?: string;
 }
 
+interface LocalModelFileInfo {
+  path: string;
+  root: string;
+  format: "gguf" | "safetensors";
+  size?: number;
+  mtimeMs?: number;
+}
+
+interface LocalModelRootStatus {
+  path: string;
+  available: boolean;
+  modelCount: number;
+}
+
+interface LocalModelScanStatus {
+  createdAt: number;
+  roots: LocalModelRootStatus[];
+  files: LocalModelFileInfo[];
+}
+
+interface LocalModelRuntimeStatus {
+  llamaServerAvailable: boolean;
+  llamaServerPath: string | null;
+  installHint: string | null;
+}
+
+interface LocalModelSettings {
+  roots: string[];
+  scan: LocalModelScanStatus;
+  runtime: LocalModelRuntimeStatus;
+}
+
 interface KanbanTask {
   id: string;
   title: string;
@@ -532,6 +564,14 @@ interface HermesAPI {
       createdAt: number;
     }>
   >;
+  getLocalModelSettings: () => Promise<LocalModelSettings>;
+  setLocalModelRoots: (roots: string[]) => Promise<LocalModelSettings>;
+  resetLocalModelRoots: () => Promise<LocalModelSettings>;
+  rescanLocalModels: () => Promise<{
+    status: LocalModelScanStatus;
+    models: Array<{ model: string; source?: string; available?: boolean }>;
+  }>;
+  localModelRuntimeStatus: () => Promise<LocalModelRuntimeStatus>;
   addModel: (
     name: string,
     provider: string,

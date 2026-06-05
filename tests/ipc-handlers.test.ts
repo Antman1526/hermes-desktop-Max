@@ -75,6 +75,11 @@ describe("New IPC handlers from v0.8/v0.9 features", () => {
     "start-paperclip",
     "stop-paperclip",
     "open-paperclip",
+    "get-local-model-settings",
+    "set-local-model-roots",
+    "reset-local-model-roots",
+    "rescan-local-models",
+    "local-model-runtime-status",
   ];
 
   for (const ch of newChannels) {

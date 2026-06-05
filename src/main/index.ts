@@ -101,6 +101,9 @@ import {
   getPlatformEnabled,
   setPlatformEnabled,
   getApiServerKey,
+  getLocalModelRoots,
+  setLocalModelRoots,
+  resetLocalModelRoots,
 } from "./config";
 import {
   listSessions,
@@ -116,9 +119,14 @@ import {
 import { listModels, addModel, removeModel, updateModel } from "./models";
 import {
   getLocalModelServerStatus,
+  getLocalModelRuntimeStatus,
   startLocalModelServer,
   stopLocalModelServer,
 } from "./local-model-server";
+import {
+  getLocalModelScanStatus,
+  rescanLocalModels,
+} from "./local-model-files";
 import {
   listProfiles,
   createProfile,
@@ -1321,6 +1329,34 @@ function setupIPC(): void {
   );
   ipcMain.handle("local-model-server-status", () =>
     getLocalModelServerStatus(),
+  );
+  ipcMain.handle("get-local-model-settings", () => {
+    const roots = getLocalModelRoots();
+    return {
+      roots,
+      scan: getLocalModelScanStatus(roots),
+      runtime: getLocalModelRuntimeStatus(),
+    };
+  });
+  ipcMain.handle("set-local-model-roots", (_event, roots: string[]) => {
+    const nextRoots = setLocalModelRoots(roots);
+    return {
+      roots: nextRoots,
+      scan: getLocalModelScanStatus(nextRoots),
+      runtime: getLocalModelRuntimeStatus(),
+    };
+  });
+  ipcMain.handle("reset-local-model-roots", () => {
+    const roots = resetLocalModelRoots();
+    return {
+      roots,
+      scan: getLocalModelScanStatus(roots),
+      runtime: getLocalModelRuntimeStatus(),
+    };
+  });
+  ipcMain.handle("rescan-local-models", () => rescanLocalModels());
+  ipcMain.handle("local-model-runtime-status", () =>
+    getLocalModelRuntimeStatus(),
   );
   ipcMain.handle("start-local-model-server", (_event, modelPath: string) =>
     startLocalModelServer(modelPath),

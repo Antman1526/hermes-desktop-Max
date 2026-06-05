@@ -5,7 +5,9 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   buildLocalModelEntries,
   discoverLocalModelFiles,
+  getLocalModelScanStatus,
   mergeDiscoveredLocalModelEntries,
+  rescanLocalModels,
 } from "../src/main/local-model-files";
 
 const TEST_DIR = join(tmpdir(), `hermes-local-models-${Date.now()}`);
@@ -40,8 +42,12 @@ describe("local model file discovery", () => {
     writeFileSync(safetensors, Buffer.alloc(1_100_000));
 
     expect(discoverLocalModelFiles([mainStore, desktop])).toEqual([
-      { path: gguf, root: mainStore, format: "gguf" },
-      { path: safetensors, root: desktop, format: "safetensors" },
+      expect.objectContaining({ path: gguf, root: mainStore, format: "gguf" }),
+      expect.objectContaining({
+        path: safetensors,
+        root: desktop,
+        format: "safetensors",
+      }),
     ]);
   });
 
@@ -133,6 +139,56 @@ describe("local model file discovery", () => {
         model: presentPath,
         available: true,
         rootAvailable: true,
+      }),
+    ]);
+  });
+
+  it("reports scan status for mounted and missing configured roots", () => {
+    const mountedRoot = join(TEST_DIR, "Desktop", "AI_Models");
+    const missingRoot = join(TEST_DIR, "MainStore", "AI_Models");
+    const modelPath = join(mountedRoot, "GGUF", "Llama-3.2-3B.gguf");
+    mkdirSync(join(mountedRoot, "GGUF"), { recursive: true });
+    writeFileSync(modelPath, Buffer.alloc(1_100_000));
+
+    const status = getLocalModelScanStatus([mountedRoot, missingRoot]);
+
+    expect(status.roots).toEqual([
+      expect.objectContaining({
+        path: mountedRoot,
+        available: true,
+        modelCount: 1,
+      }),
+      expect.objectContaining({
+        path: missingRoot,
+        available: false,
+        modelCount: 0,
+      }),
+    ]);
+    expect(status.files).toEqual([
+      expect.objectContaining({
+        path: modelPath,
+        root: mountedRoot,
+        format: "gguf",
+      }),
+    ]);
+  });
+
+  it("rescans local models and returns built entries with scan status", () => {
+    const root = join(TEST_DIR, "Desktop", "AI_Models");
+    const modelPath = join(root, "GGUF", "Hermes-3.gguf");
+    mkdirSync(join(root, "GGUF"), { recursive: true });
+    writeFileSync(modelPath, Buffer.alloc(1_100_000));
+
+    const result = rescanLocalModels([root]);
+
+    expect(result.status.roots).toEqual([
+      expect.objectContaining({ path: root, available: true, modelCount: 1 }),
+    ]);
+    expect(result.models).toEqual([
+      expect.objectContaining({
+        model: modelPath,
+        source: "local-file",
+        available: true,
       }),
     ]);
   });
