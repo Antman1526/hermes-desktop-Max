@@ -3,7 +3,7 @@ import { readFileSync } from "fs";
 import { join } from "path";
 
 const ROOT = join(__dirname, "..");
-const indexSrc = readFileSync(join(ROOT, "src/main/index.ts"), "utf-8");
+const indexSrc = readFileSync(join(ROOT, "src/main/app-main.ts"), "utf-8");
 const preloadSrc = readFileSync(join(ROOT, "src/preload/index.ts"), "utf-8");
 
 /**

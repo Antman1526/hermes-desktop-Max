@@ -41,23 +41,23 @@ import {
 } from "../../assets/icons";
 import type { LucideIcon } from "lucide-react";
 import { useI18n } from "../../components/useI18n";
+import {
+  getFeatureCapability,
+  type ConnectionMode,
+  type LayoutFeature,
+} from "./capabilities";
 
-type View =
-  | "chat"
-  | "sessions"
-  | "agents"
-  | "office"
-  | "paperclip"
-  | "models"
-  | "providers"
-  | "skills"
-  | "soul"
-  | "memory"
-  | "tools"
-  | "schedules"
-  | "kanban"
-  | "gateway"
-  | "settings";
+type View = LayoutFeature;
+
+type ViewComponent = React.ReactNode | (() => React.ReactNode);
+
+const renderNode = (node: ViewComponent): React.ReactNode =>
+  typeof node === "function" ? node() : node;
+
+const REMOTE_NOTICE_OVERRIDES: Partial<Record<View, string>> = {
+  agents: "Profiles",
+  soul: "Persona",
+};
 
 const NAV_ITEMS: { view: View; icon: LucideIcon; labelKey: string }[] = [
   { view: "chat", icon: ChatBubble, labelKey: "navigation.chat" },
@@ -99,7 +99,8 @@ function Layout({
     () => new Set<View>(["chat"]),
   );
   // Remote-only mode — SSH tunnel has full access; only pure HTTP remote mode restricts screens
-  const [remoteMode, setRemoteMode] = useState(false);
+  const [connectionMode, setConnectionMode] =
+    useState<ConnectionMode>("local");
 
   const paneStyle = (target: View): React.CSSProperties => ({
     display: view === target ? "flex" : "none",
@@ -113,10 +114,32 @@ function Layout({
     setView(v);
   }, []);
 
-  // Re-check remote mode on tab switch (picks up Settings changes)
+  // Re-check connection mode on tab switch (picks up Settings changes)
   useEffect(() => {
-    window.hermesAPI.isRemoteOnlyMode().then(setRemoteMode);
+    window.hermesAPI
+      .getConnectionConfig()
+      .then((config) => setConnectionMode(config.mode));
   }, [view]);
+
+  const renderFeaturePane = (target: View, children: ViewComponent) => {
+    if (!visitedViews.has(target)) return null;
+    const capability = getFeatureCapability(target, connectionMode);
+    return (
+      <div style={paneStyle(target)}>
+        {capability.availability === "unavailable" ? (
+          <RemoteNotice
+            feature={
+              REMOTE_NOTICE_OVERRIDES[target] ||
+              capability.remoteNoticeFeature ||
+              target
+            }
+          />
+        ) : (
+          renderNode(children)
+        )}
+      </div>
+    );
+  };
 
   // Auto-update state
   const [updateVersion, setUpdateVersion] = useState<string | null>(null);
@@ -284,140 +307,58 @@ function Layout({
           />
         </div>
 
-        {visitedViews.has("sessions") && (
-          <div style={paneStyle("sessions")}>
-            {remoteMode ? (
-              <RemoteNotice feature="Sessions" />
-            ) : (
-              <Sessions
-                onResumeSession={handleResumeSession}
-                onNewChat={handleNewChat}
-                currentSessionId={currentSessionId}
-                visible={view === "sessions"}
-              />
-            )}
-          </div>
+        {renderFeaturePane("sessions", () => (
+          <Sessions
+            onResumeSession={handleResumeSession}
+            onNewChat={handleNewChat}
+            currentSessionId={currentSessionId}
+            visible={view === "sessions"}
+          />
+        ))}
+
+        {renderFeaturePane("agents", () => (
+          <Agents
+            activeProfile={activeProfile}
+            onSelectProfile={handleSelectProfile}
+            onChatWith={(name: string) => {
+              handleSelectProfile(name);
+              goTo("chat");
+            }}
+          />
+        ))}
+
+        {renderFeaturePane("office", () => (
+          <Office profile={activeProfile} visible={view === "office"} />
+        ))}
+
+        {renderFeaturePane("paperclip", <Paperclip />)}
+
+        {renderFeaturePane("models", <Models visible={view === "models"} />)}
+
+        {renderFeaturePane("providers", () => (
+          <Providers profile={activeProfile} visible={view === "providers"} />
+        ))}
+
+        {renderFeaturePane("skills", <Skills profile={activeProfile} />)}
+
+        {renderFeaturePane("soul", <Soul profile={activeProfile} />)}
+
+        {renderFeaturePane("memory", <Memory profile={activeProfile} />)}
+
+        {renderFeaturePane("tools", <Tools profile={activeProfile} />)}
+
+        {renderFeaturePane(
+          "schedules",
+          <Schedules profile={activeProfile} />,
         )}
 
-        {visitedViews.has("agents") && (
-          <div style={paneStyle("agents")}>
-            {remoteMode ? (
-              <RemoteNotice feature="Profiles" />
-            ) : (
-              <Agents
-                activeProfile={activeProfile}
-                onSelectProfile={handleSelectProfile}
-                onChatWith={(name: string) => {
-                  handleSelectProfile(name);
-                  goTo("chat");
-                }}
-              />
-            )}
-          </div>
-        )}
+        {renderFeaturePane("kanban", () => (
+          <Kanban profile={activeProfile} visible={view === "kanban"} />
+        ))}
 
-        {visitedViews.has("office") && (
-          <div style={paneStyle("office")}>
-            <Office profile={activeProfile} visible={view === "office"} />
-          </div>
-        )}
+        {renderFeaturePane("gateway", <Gateway profile={activeProfile} />)}
 
-        {visitedViews.has("paperclip") && (
-          <div style={paneStyle("paperclip")}>
-            <Paperclip />
-          </div>
-        )}
-
-        {visitedViews.has("models") && (
-          <div style={paneStyle("models")}>
-            <Models visible={view === "models"} />
-          </div>
-        )}
-
-        {visitedViews.has("providers") && (
-          <div style={paneStyle("providers")}>
-            {remoteMode ? (
-              <RemoteNotice feature="Providers" />
-            ) : (
-              <Providers
-                profile={activeProfile}
-                visible={view === "providers"}
-              />
-            )}
-          </div>
-        )}
-
-        {visitedViews.has("skills") && (
-          <div style={paneStyle("skills")}>
-            {remoteMode ? (
-              <RemoteNotice feature="Skills" />
-            ) : (
-              <Skills profile={activeProfile} />
-            )}
-          </div>
-        )}
-
-        {visitedViews.has("soul") && (
-          <div style={paneStyle("soul")}>
-            {remoteMode ? (
-              <RemoteNotice feature="Persona" />
-            ) : (
-              <Soul profile={activeProfile} />
-            )}
-          </div>
-        )}
-
-        {visitedViews.has("memory") && (
-          <div style={paneStyle("memory")}>
-            {remoteMode ? (
-              <RemoteNotice feature="Memory" />
-            ) : (
-              <Memory profile={activeProfile} />
-            )}
-          </div>
-        )}
-
-        {visitedViews.has("tools") && (
-          <div style={paneStyle("tools")}>
-            {remoteMode ? (
-              <RemoteNotice feature="Tools" />
-            ) : (
-              <Tools profile={activeProfile} />
-            )}
-          </div>
-        )}
-
-        {visitedViews.has("schedules") && (
-          <div style={paneStyle("schedules")}>
-            <Schedules profile={activeProfile} />
-          </div>
-        )}
-
-        {visitedViews.has("kanban") && (
-          <div style={paneStyle("kanban")}>
-            {remoteMode ? (
-              <RemoteNotice feature="Kanban" />
-            ) : (
-              <Kanban profile={activeProfile} visible={view === "kanban"} />
-            )}
-          </div>
-        )}
-
-        {visitedViews.has("gateway") && (
-          <div style={paneStyle("gateway")}>
-            {remoteMode ? (
-              <RemoteNotice feature="Gateway" />
-            ) : (
-              <Gateway profile={activeProfile} />
-            )}
-          </div>
-        )}
-
-        {visitedViews.has("settings") && (
-          <div style={paneStyle("settings")}>
-            <Settings profile={activeProfile} />
-          </div>
-        )}
+        {renderFeaturePane("settings", <Settings profile={activeProfile} />)}
       </main>
     </div>
   );

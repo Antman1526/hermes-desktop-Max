@@ -1,0 +1,12 @@
+{
+  "name": "agent-skills",
+  "displayName": "Agent Skills",
+  "description": "Production-grade engineering skills for AI coding agents, covering the software development lifecycle from spec to ship.",
+  "homepage": "https://github.com/addyosmani/agent-skills/releases/tag/0.6.1",
+  "repository": "https://github.com/addyosmani/agent-skills",
+  "license": "MIT",
+  "ref": "0.6.1",
+  "commit": "250ffaa6e8ae039e4071f69af623781165d20df7",
+  "category": "agent-skills",
+  "sourceLabel": "addyosmani/agent-skills@0.6.1"
+}

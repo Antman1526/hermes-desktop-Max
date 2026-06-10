@@ -12,6 +12,7 @@ export default {
   configuration: "配置",
   serverUrl: "服务器地址",
   serverUrlHint: "默认本地 Paperclip 服务器地址是 http://127.0.0.1:3100。",
+  autoStart: "随 Hermes Desktop 自动启动 Paperclip",
   disableTelemetry: "由 Hermes Desktop 启动时禁用 Paperclip 遥测",
   saved: "已保存",
   saving: "保存中...",

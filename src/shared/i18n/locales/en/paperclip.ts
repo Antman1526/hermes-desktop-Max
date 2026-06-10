@@ -12,6 +12,7 @@ export default {
   configuration: "Configuration",
   serverUrl: "Server URL",
   serverUrlHint: "Default local Paperclip server URL is http://127.0.0.1:3100.",
+  autoStart: "Start Paperclip automatically with Hermes Desktop",
   disableTelemetry:
     "Disable Paperclip telemetry when started by Hermes Desktop",
   saved: "Saved",

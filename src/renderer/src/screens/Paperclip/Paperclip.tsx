@@ -4,6 +4,7 @@ import { useI18n } from "../../components/useI18n";
 
 interface PaperclipConfig {
   serverUrl: string;
+  autoStart: boolean;
   telemetryDisabled: boolean;
 }
 
@@ -20,6 +21,7 @@ function Paperclip(): React.JSX.Element {
   const { t } = useI18n();
   const [config, setConfig] = useState<PaperclipConfig>({
     serverUrl: "http://127.0.0.1:3100",
+    autoStart: true,
     telemetryDisabled: true,
   });
   const [status, setStatus] = useState<PaperclipStatus | null>(null);
@@ -177,6 +179,20 @@ function Paperclip(): React.JSX.Element {
             {t("paperclip.serverUrlHint")}
           </div>
         </div>
+        <label className="agents-create-clone">
+          <input
+            type="checkbox"
+            checked={config.autoStart}
+            onChange={(event) =>
+              setConfig((current) => ({
+                ...current,
+                autoStart: event.target.checked,
+              }))
+            }
+            onBlur={handleSave}
+          />
+          <span>{t("paperclip.autoStart")}</span>
+        </label>
         <label className="agents-create-clone">
           <input
             type="checkbox"

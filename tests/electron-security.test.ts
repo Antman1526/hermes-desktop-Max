@@ -11,7 +11,7 @@ import {
 } from "../src/main/security";
 
 const ROOT = join(__dirname, "..");
-const mainSrc = readFileSync(join(ROOT, "src/main/index.ts"), "utf-8");
+const mainSrc = readFileSync(join(ROOT, "src/main/app-main.ts"), "utf-8");
 const preloadSrc = readFileSync(join(ROOT, "src/preload/index.ts"), "utf-8");
 const installerSrc = readFileSync(join(ROOT, "src/main/installer.ts"), "utf-8");
 

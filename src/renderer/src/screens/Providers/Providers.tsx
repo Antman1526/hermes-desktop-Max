@@ -79,7 +79,7 @@ function Providers({
     const [envData, mc, pool] = await Promise.all([
       window.hermesAPI.getEnv(profile),
       window.hermesAPI.getModelConfig(profile),
-      window.hermesAPI.getCredentialPool(),
+      window.hermesAPI.getCredentialPool(profile),
     ]);
     setEnv(envData);
     setModelProvider(mc.provider);
@@ -227,6 +227,7 @@ function Providers({
       poolProvider,
       poolNewKey.trim(),
       poolNewLabel.trim(),
+      profile,
     );
     setCredPool((prev) => ({ ...prev, [poolProvider]: updated }));
     setPoolNewKey("");
@@ -239,7 +240,7 @@ function Providers({
   ): Promise<void> {
     const entries = [...(credPool[provider] || [])];
     entries.splice(index, 1);
-    await window.hermesAPI.setCredentialPool(provider, entries);
+    await window.hermesAPI.setCredentialPool(provider, entries, profile);
     setCredPool((prev) => ({ ...prev, [provider]: entries }));
   }
 

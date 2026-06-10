@@ -1,0 +1,67 @@
+import { mkdtempSync, readFileSync, rmSync } from "fs";
+import { tmpdir } from "os";
+import { join } from "path";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+let testHome = "";
+
+async function loadSkillsModule() {
+  testHome = mkdtempSync(join(tmpdir(), "hermes-curated-skills-"));
+  vi.resetModules();
+  vi.stubEnv("HERMES_HOME", testHome);
+  return import("../src/main/skills");
+}
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+  vi.resetModules();
+  if (testHome) {
+    rmSync(testHome, { recursive: true, force: true });
+    testHome = "";
+  }
+});
+
+describe("curated external skills", () => {
+  it("lists pinned agent-skills and taste-skill entries in the bundled browser", async () => {
+    const { listBundledSkills } = await loadSkillsModule();
+
+    const skills = listBundledSkills();
+
+    expect(skills).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: "api-and-interface-design",
+          category: "agent-skills",
+          source: "addyosmani/agent-skills@0.6.1",
+        }),
+        expect.objectContaining({
+          name: "design-taste-frontend",
+          category: "taste-skill",
+          source: "Leonxlnx/taste-skill@3c7017d",
+        }),
+      ]),
+    );
+  });
+
+  it("installs a curated skill into the selected profile without the Hermes CLI", async () => {
+    const { installSkill } = await loadSkillsModule();
+
+    const result = installSkill("design-taste-frontend", "designer");
+
+    expect(result).toEqual({ success: true });
+    const installed = readFileSync(
+      join(
+        testHome,
+        "profiles",
+        "designer",
+        "skills",
+        "taste-skill",
+        "taste-skill",
+        "SKILL.md",
+      ),
+      "utf-8",
+    );
+    expect(installed).toContain("name: design-taste-frontend");
+    expect(installed).toContain("Anti-Slop Frontend Skill");
+  });
+});

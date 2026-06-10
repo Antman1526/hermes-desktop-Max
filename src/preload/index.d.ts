@@ -817,12 +817,18 @@ interface HermesAPI {
   // Paperclip sidecar
   getPaperclipConfig: () => Promise<{
     serverUrl: string;
+    autoStart: boolean;
     telemetryDisabled: boolean;
   }>;
   setPaperclipConfig: (config: {
     serverUrl?: string;
+    autoStart?: boolean;
     telemetryDisabled?: boolean;
-  }) => Promise<{ serverUrl: string; telemetryDisabled: boolean }>;
+  }) => Promise<{
+    serverUrl: string;
+    autoStart: boolean;
+    telemetryDisabled: boolean;
+  }>;
   paperclipStatus: () => Promise<{
     serverUrl: string;
     running: boolean;

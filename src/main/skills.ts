@@ -1,6 +1,13 @@
 import { execFileSync } from "child_process";
-import { existsSync, readdirSync, readFileSync, statSync } from "fs";
-import { join } from "path";
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  statSync,
+} from "fs";
+import { dirname, join } from "path";
 import { homedir } from "os";
 import {
   HERMES_HOME,
@@ -25,6 +32,27 @@ export interface SkillSearchResult {
   category: string;
   source: string;
   installed: boolean;
+}
+
+interface CuratedSkillManifest {
+  name: string;
+  displayName?: string;
+  description?: string;
+  homepage: string;
+  repository: string;
+  license: string;
+  ref: string;
+  commit: string;
+  category: string;
+  sourceLabel: string;
+}
+
+interface CuratedSkill {
+  folderName: string;
+  skillPath: string;
+  manifest: CuratedSkillManifest;
+  name: string;
+  description: string;
 }
 
 /**
@@ -60,6 +88,135 @@ function parseSkillFrontmatter(content: string): {
   if (descMatch) result.description = descMatch[1].trim();
 
   return result;
+}
+
+function curatedSkillsRootCandidates(): string[] {
+  const candidates = [
+    join(process.cwd(), "resources", "curated-skills"),
+    join(__dirname, "..", "..", "resources", "curated-skills"),
+  ];
+  const resourcesPath = process.resourcesPath;
+  if (resourcesPath) {
+    candidates.push(
+      join(resourcesPath, "resources", "curated-skills"),
+      join(resourcesPath, "app.asar", "resources", "curated-skills"),
+    );
+  }
+  return Array.from(new Set(candidates));
+}
+
+function curatedSkillsRoot(): string {
+  return curatedSkillsRootCandidates().find((candidate) => existsSync(candidate)) ?? "";
+}
+
+function readJsonFile<T>(file: string): T | null {
+  try {
+    return JSON.parse(readFileSync(file, "utf-8")) as T;
+  } catch {
+    return null;
+  }
+}
+
+function listCuratedSkills(): CuratedSkill[] {
+  const root = curatedSkillsRoot();
+  if (!root) return [];
+
+  const skills: CuratedSkill[] = [];
+  try {
+    for (const sourceName of readdirSync(root)) {
+      const sourcePath = join(root, sourceName);
+      if (!statSync(sourcePath).isDirectory()) continue;
+
+      const manifest = readJsonFile<CuratedSkillManifest>(
+        join(sourcePath, "manifest.json"),
+      );
+      if (!manifest?.category || !manifest.sourceLabel) continue;
+
+      const skillsDir = join(sourcePath, "skills");
+      if (!existsSync(skillsDir)) continue;
+
+      for (const folderName of readdirSync(skillsDir)) {
+        const skillPath = join(skillsDir, folderName);
+        if (!statSync(skillPath).isDirectory()) continue;
+
+        const skillFile = join(skillPath, "SKILL.md");
+        if (!existsSync(skillFile)) continue;
+
+        const content = readFileSync(skillFile, "utf-8").slice(0, 4000);
+        const meta = parseSkillFrontmatter(content);
+        skills.push({
+          folderName,
+          skillPath,
+          manifest,
+          name: meta.name || folderName,
+          description: meta.description || manifest.description || "",
+        });
+      }
+    }
+  } catch {
+    return [];
+  }
+
+  return skills.sort(
+    (a, b) =>
+      a.manifest.category.localeCompare(b.manifest.category) ||
+      a.name.localeCompare(b.name),
+  );
+}
+
+function findCuratedSkill(identifier: string): CuratedSkill | null {
+  const normalized = identifier.trim().toLowerCase();
+  if (!normalized) return null;
+
+  return (
+    listCuratedSkills().find((skill) => {
+      const sourcePath = `${skill.manifest.sourceLabel}/${skill.folderName}`;
+      return (
+        skill.name.toLowerCase() === normalized ||
+        skill.folderName.toLowerCase() === normalized ||
+        sourcePath.toLowerCase() === normalized
+      );
+    }) ?? null
+  );
+}
+
+function copyDirectoryRecursive(from: string, to: string): void {
+  mkdirSync(to, { recursive: true });
+  for (const entry of readdirSync(from)) {
+    const source = join(from, entry);
+    const target = join(to, entry);
+    const stat = statSync(source);
+    if (stat.isDirectory()) {
+      copyDirectoryRecursive(source, target);
+    } else if (stat.isFile()) {
+      mkdirSync(dirname(target), { recursive: true });
+      copyFileSync(source, target);
+    }
+  }
+}
+
+function installCuratedSkill(
+  identifier: string,
+  profile?: string,
+): SkillCliResult | null {
+  const skill = findCuratedSkill(identifier);
+  if (!skill) return null;
+
+  const destination = join(
+    profileHome(profile),
+    "skills",
+    skill.manifest.category,
+    skill.folderName,
+  );
+  try {
+    copyDirectoryRecursive(skill.skillPath, destination);
+    return { success: true };
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Install failed.",
+    };
+  }
 }
 
 /**
@@ -184,49 +341,59 @@ export function searchSkills(query: string): SkillSearchResult[] {
  */
 export function listBundledSkills(): SkillSearchResult[] {
   const bundledDir = join(HERMES_REPO, "skills");
-  if (!existsSync(bundledDir)) return [];
-
   const skills: SkillSearchResult[] = [];
 
-  try {
-    const categories = readdirSync(bundledDir);
+  if (existsSync(bundledDir)) {
+    try {
+      const categories = readdirSync(bundledDir);
 
-    for (const category of categories) {
-      const catPath = join(bundledDir, category);
-      if (!statSync(catPath).isDirectory()) continue;
+      for (const category of categories) {
+        const catPath = join(bundledDir, category);
+        if (!statSync(catPath).isDirectory()) continue;
 
-      const entries = readdirSync(catPath);
-      for (const entry of entries) {
-        const entryPath = join(catPath, entry);
-        if (!statSync(entryPath).isDirectory()) continue;
+        const entries = readdirSync(catPath);
+        for (const entry of entries) {
+          const entryPath = join(catPath, entry);
+          if (!statSync(entryPath).isDirectory()) continue;
 
-        const skillFile = join(entryPath, "SKILL.md");
-        if (!existsSync(skillFile)) continue;
+          const skillFile = join(entryPath, "SKILL.md");
+          if (!existsSync(skillFile)) continue;
 
-        try {
-          const content = readFileSync(skillFile, "utf-8").slice(0, 4000);
-          const meta = parseSkillFrontmatter(content);
+          try {
+            const content = readFileSync(skillFile, "utf-8").slice(0, 4000);
+            const meta = parseSkillFrontmatter(content);
 
-          skills.push({
-            name: meta.name || entry,
-            description: meta.description || "",
-            category,
-            source: "bundled",
-            installed: false,
-          });
-        } catch {
-          skills.push({
-            name: entry,
-            description: "",
-            category,
-            source: "bundled",
-            installed: false,
-          });
+            skills.push({
+              name: meta.name || entry,
+              description: meta.description || "",
+              category,
+              source: "bundled",
+              installed: false,
+            });
+          } catch {
+            skills.push({
+              name: entry,
+              description: "",
+              category,
+              source: "bundled",
+              installed: false,
+            });
+          }
         }
       }
+    } catch {
+      // ignore
     }
-  } catch {
-    // ignore
+  }
+
+  for (const skill of listCuratedSkills()) {
+    skills.push({
+      name: skill.name,
+      description: skill.description,
+      category: skill.manifest.category,
+      source: skill.manifest.sourceLabel,
+      installed: false,
+    });
   }
 
   return skills.sort(
@@ -297,6 +464,9 @@ export function installSkill(
   identifier: string,
   profile?: string,
 ): SkillCliResult {
+  const curatedResult = installCuratedSkill(identifier, profile);
+  if (curatedResult) return curatedResult;
+
   try {
     const args = hermesCliArgs(["skills", "install", identifier, "--yes"]);
     if (profile && profile !== "default") {

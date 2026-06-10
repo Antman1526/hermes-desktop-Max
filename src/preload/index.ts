@@ -1047,13 +1047,19 @@ const hermesAPI = {
   // Paperclip sidecar
   getPaperclipConfig: (): Promise<{
     serverUrl: string;
+    autoStart: boolean;
     telemetryDisabled: boolean;
   }> => ipcRenderer.invoke("get-paperclip-config"),
 
   setPaperclipConfig: (config: {
     serverUrl?: string;
+    autoStart?: boolean;
     telemetryDisabled?: boolean;
-  }): Promise<{ serverUrl: string; telemetryDisabled: boolean }> =>
+  }): Promise<{
+    serverUrl: string;
+    autoStart: boolean;
+    telemetryDisabled: boolean;
+  }> =>
     ipcRenderer.invoke("set-paperclip-config", config),
 
   paperclipStatus: (): Promise<{

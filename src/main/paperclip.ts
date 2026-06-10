@@ -1,14 +1,33 @@
 import { ChildProcess, execFile, spawn } from "child_process";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
+import {
+  appendFileSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  writeFileSync,
+} from "fs";
 import http from "http";
 import https from "https";
 import { join } from "path";
 import { HERMES_HOME, getEnhancedPath } from "./installer";
 
 export const DEFAULT_PAPERCLIP_URL = "http://127.0.0.1:3100";
+export const DEFAULT_PAPERCLIP_VERSION = "2026.529.0";
+export const PAPERCLIP_NPX_ARGS = [
+  "--yes",
+  `paperclipai@${DEFAULT_PAPERCLIP_VERSION}`,
+  "run",
+];
+export const PAPERCLIP_STARTUP_TIMEOUT_MS = 180000;
+const PAPERCLIP_HEALTH_POLL_MS = 750;
+const PAPERCLIP_NPX_CANDIDATES =
+  process.platform === "win32"
+    ? ["npx.cmd", "npx"]
+    : ["/opt/homebrew/bin/npx", "/usr/local/bin/npx", "/usr/bin/npx", "npx"];
 
 export interface PaperclipConfig {
   serverUrl: string;
+  autoStart: boolean;
   telemetryDisabled: boolean;
 }
 
@@ -25,6 +44,29 @@ let paperclipProcess: ChildProcess | null = null;
 
 function desktopConfigFile(): string {
   return join(HERMES_HOME, "desktop.json");
+}
+
+export function getPaperclipNpmCacheDir(): string {
+  return join(HERMES_HOME, "paperclip-npm-cache");
+}
+
+function paperclipLogFile(): string {
+  return join(HERMES_HOME, "paperclip.log");
+}
+
+function ensurePaperclipRuntimeDirs(): void {
+  mkdirSync(getPaperclipNpmCacheDir(), { recursive: true });
+}
+
+function appendPaperclipLog(chunk: Buffer | string): void {
+  try {
+    if (!existsSync(HERMES_HOME)) {
+      mkdirSync(HERMES_HOME, { recursive: true });
+    }
+    appendFileSync(paperclipLogFile(), chunk);
+  } catch {
+    // Logging must not block sidecar startup.
+  }
 }
 
 function readDesktopConfig(): Record<string, unknown> {
@@ -73,6 +115,7 @@ export function readPaperclipConfigFromData(
     serverUrl: normalizePaperclipUrl(
       typeof raw.serverUrl === "string" ? raw.serverUrl : "",
     ),
+    autoStart: typeof raw.autoStart === "boolean" ? raw.autoStart : true,
     telemetryDisabled:
       typeof raw.telemetryDisabled === "boolean" ? raw.telemetryDisabled : true,
   };
@@ -87,6 +130,7 @@ export function mergePaperclipConfigData(
     ...data,
     paperclip: {
       serverUrl: normalizePaperclipUrl(config.serverUrl ?? current.serverUrl),
+      autoStart: config.autoStart ?? current.autoStart,
       telemetryDisabled: config.telemetryDisabled ?? current.telemetryDisabled,
     },
   };
@@ -104,20 +148,31 @@ export function setPaperclipConfig(
   return readPaperclipConfigFromData(nextData);
 }
 
-function requestHealth(url: string): Promise<boolean> {
+export function requestHealth(url: string): Promise<boolean> {
   return new Promise((resolve) => {
-    const healthUrl = `${normalizePaperclipUrl(url)}/health`;
+    const healthUrl = `${normalizePaperclipUrl(url)}/api/health`;
     const mod = healthUrl.startsWith("https") ? https : http;
     const req = mod.request(
       healthUrl,
       { method: "GET", timeout: 1500 },
       (res) => {
-        resolve(
-          Boolean(
-            res.statusCode && res.statusCode >= 200 && res.statusCode < 500,
-          ),
-        );
-        res.resume();
+        let body = "";
+        res.setEncoding("utf-8");
+        res.on("data", (chunk) => {
+          body += chunk;
+        });
+        res.on("end", () => {
+          if (!res.statusCode || res.statusCode < 200 || res.statusCode >= 300) {
+            resolve(false);
+            return;
+          }
+          try {
+            const parsed = JSON.parse(body) as { status?: unknown };
+            resolve(parsed.status === "ok");
+          } catch {
+            resolve(false);
+          }
+        });
       },
     );
     req.on("error", () => resolve(false));
@@ -132,23 +187,112 @@ function requestHealth(url: string): Promise<boolean> {
 function execFileOutput(
   command: string,
   args: string[],
-): Promise<{ ok: boolean; output: string }> {
+  timeout = 5000,
+): Promise<{ ok: boolean; output: string; error: string | null }> {
   return new Promise((resolve) => {
     execFile(
       command,
       args,
       {
         env: { ...process.env, PATH: getEnhancedPath() },
-        timeout: 5000,
+        timeout,
       },
       (error, stdout, stderr) => {
         resolve({
           ok: !error,
           output: (stdout || stderr || "").toString().trim(),
+          error: error ? error.message : null,
         });
       },
     );
   });
+}
+
+export function resolvePaperclipNpxCommand(
+  fileExists: (path: string) => boolean = existsSync,
+): string {
+  for (const candidate of PAPERCLIP_NPX_CANDIDATES) {
+    if (candidate.includes("/") && fileExists(candidate)) return candidate;
+  }
+  return process.platform === "win32" ? "npx.cmd" : "npx";
+}
+
+export function buildPaperclipEnv(
+  config: PaperclipConfig,
+  baseEnv: NodeJS.ProcessEnv = process.env,
+): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = {
+    ...baseEnv,
+    PATH: getEnhancedPath(),
+    npm_config_cache: getPaperclipNpmCacheDir(),
+    NPM_CONFIG_CACHE: getPaperclipNpmCacheDir(),
+  };
+  if (baseEnv.PATH && !env.PATH?.includes(baseEnv.PATH)) {
+    env.PATH = `${env.PATH}:${baseEnv.PATH}`;
+  }
+  if (config.telemetryDisabled) {
+    env.PAPERCLIP_TELEMETRY_DISABLED = "1";
+    env.DO_NOT_TRACK = "1";
+  }
+  return env;
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function waitForPaperclipStartup(
+  proc: ChildProcess,
+  url: string,
+  getOutput: () => string,
+): Promise<{ success: boolean; error?: string }> {
+  const closeState: {
+    value: {
+      code: number | null;
+      signal: NodeJS.Signals | null;
+    } | null;
+  } = { value: null };
+  const errorState: { value: Error | null } = { value: null };
+
+  proc.once("close", (code, signal) => {
+    closeState.value = { code, signal };
+  });
+  proc.once("error", (error) => {
+    errorState.value = error;
+  });
+
+  const start = Date.now();
+  while (Date.now() - start < PAPERCLIP_STARTUP_TIMEOUT_MS) {
+    if (await requestHealth(url)) {
+      return { success: true };
+    }
+
+    if (errorState.value) {
+      return {
+        success: false,
+        error: `Paperclip failed to launch: ${errorState.value.message}`,
+      };
+    }
+
+    if (closeState.value) {
+      const closed = closeState.value;
+      const output = getOutput();
+      const suffix = output ? ` ${output}` : "";
+      return {
+        success: false,
+        error: `Paperclip exited before becoming healthy (code ${closed.code ?? "unknown"}${closed.signal ? `, signal ${closed.signal}` : ""}).${suffix}`,
+      };
+    }
+
+    await delay(PAPERCLIP_HEALTH_POLL_MS);
+  }
+
+  return {
+    success: false,
+    error: `Paperclip did not become healthy at ${normalizePaperclipUrl(
+      url,
+    )} within ${Math.round(PAPERCLIP_STARTUP_TIMEOUT_MS / 1000)}s. Check ${paperclipLogFile()}.`,
+  };
 }
 
 async function getLauncherInfo(): Promise<{
@@ -160,11 +304,21 @@ async function getLauncherInfo(): Promise<{
     return { available: true, detail: globalCli.output || "paperclipai" };
   }
 
-  const npx = await execFileOutput("npx", ["--version"]);
+  const npxCommand = resolvePaperclipNpxCommand();
+  if (npxCommand.includes("/") && existsSync(npxCommand)) {
+    return { available: true, detail: `npx (${npxCommand})` };
+  }
+
+  const npx = await execFileOutput(npxCommand, ["--version"], 15000);
   if (npx.ok) {
     return { available: true, detail: `npx ${npx.output}` };
   }
 
+  appendPaperclipLog(
+    `[Hermes Desktop] Paperclip launcher unavailable. paperclipai: ${
+      globalCli.error || globalCli.output || "unknown error"
+    }; ${npxCommand}: ${npx.error || npx.output || "unknown error"}\n`,
+  );
   return { available: false, detail: null };
 }
 
@@ -201,29 +355,54 @@ export async function startPaperclip(): Promise<{
   }
 
   const config = getPaperclipConfig();
-  const env: NodeJS.ProcessEnv = {
-    ...process.env,
-    PATH: getEnhancedPath(),
+  ensurePaperclipRuntimeDirs();
+  const env = buildPaperclipEnv(config);
+  const outputChunks: string[] = [];
+  const rememberOutput = (chunk: Buffer | string): void => {
+    const text = chunk.toString();
+    outputChunks.push(text);
+    if (outputChunks.join("").length > 4000) outputChunks.shift();
+    appendPaperclipLog(chunk);
   };
-  if (config.telemetryDisabled) {
-    env.PAPERCLIP_TELEMETRY_DISABLED = "1";
-    env.DO_NOT_TRACK = "1";
-  }
 
-  paperclipProcess = spawn("npx", ["paperclipai", "run"], {
+  const proc = spawn(resolvePaperclipNpxCommand(), PAPERCLIP_NPX_ARGS, {
     env,
-    stdio: "ignore",
+    stdio: ["ignore", "pipe", "pipe"],
     detached: false,
   });
-  paperclipProcess.unref();
-  paperclipProcess.on("close", () => {
+  paperclipProcess = proc;
+  proc.stdout?.on("data", rememberOutput);
+  proc.stderr?.on("data", rememberOutput);
+  proc.unref();
+  proc.on("close", () => {
     paperclipProcess = null;
   });
-  paperclipProcess.on("error", () => {
+  proc.on("error", () => {
     paperclipProcess = null;
   });
 
-  return { success: true };
+  const result = await waitForPaperclipStartup(
+    proc,
+    config.serverUrl,
+    () => outputChunks.join("").trim().slice(-1000),
+  );
+  if (!result.success) {
+    if (!proc.killed) proc.kill("SIGTERM");
+    if (paperclipProcess === proc) paperclipProcess = null;
+  }
+  return result;
+}
+
+export async function startPaperclipIfAutoStart(): Promise<void> {
+  if (!getPaperclipConfig().autoStart) return;
+  const result = await startPaperclip();
+  if (!result.success) {
+    appendPaperclipLog(
+      `[Hermes Desktop] Paperclip autostart failed: ${
+        result.error || "unknown error"
+      }\n`,
+    );
+  }
 }
 
 export function stopPaperclip(): { success: boolean; error?: string } {
