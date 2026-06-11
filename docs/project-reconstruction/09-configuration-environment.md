@@ -1,6 +1,6 @@
 # 09 - Configuration and Environment Variables
 
-Generated from repository state on 2026-06-04. No secrets are included; environment-variable names are documented without values.
+Generated from repository state on 2026-06-11. No secrets are included; environment-variable names are documented without values.
 
 ## Configuration Files
 

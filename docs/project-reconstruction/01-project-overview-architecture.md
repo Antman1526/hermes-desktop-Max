@@ -1,15 +1,15 @@
 # 01 - Project Overview and Architecture
 
-Generated from repository state on 2026-06-04. No secrets are included; environment-variable names are documented without values.
+Generated from repository state on 2026-06-11. No secrets are included; environment-variable names are documented without values.
 
 ## Purpose
 
-Hermes Desktop is an Electron desktop shell for installing, configuring, and operating Nous Research Hermes Agent. It wraps a local or remote Hermes API server with a React UI for chat, model selection, profiles, memory, skills, tools, schedules, gateways, Office/Claw3d, Paperclip, and diagnostics. This fork is version `0.5.2` and adds practical local model file discovery for:
+Hermes Desktop is an Electron desktop shell for installing, configuring, and operating Nous Research Hermes Agent. It wraps a local or remote Hermes API server with a React UI for chat, model selection, profiles, memory, skills, tools, schedules, gateways, Office/Claw3d, Paperclip, and diagnostics. This fork is version `0.5.2` and adds practical local model file discovery for configured roots, currently prioritized as:
 
-- `/Volumes/MainStore/Development/AI_Models`
 - `/Users/Antman/Desktop/AI_Models`
+- `/Volumes/MainStore/Development/AI_Models`
 
-It also includes Windows-oriented runtime path handling, Paperclip sidecar controls, OpenChronicle memory-provider wiring, tighter installer packaging rules, and a local `llama-server` launcher for discovered `.gguf` model files. Local model discovery keeps missing external-drive models visible but disabled, which prevents users from losing model entries when `/Volumes/MainStore` is temporarily unmounted.
+It also includes Windows-oriented runtime path handling, Paperclip sidecar controls, OpenChronicle memory-provider wiring, tighter installer packaging rules, and a local `llama-server` launcher for discovered `.gguf` model files. Desktop GGUF files under `/Users/Antman/Desktop/AI_Models/GGUF` are the primary/default local models. Local model discovery keeps missing external-drive models visible but disabled, which prevents users from losing model entries when `/Volumes/MainStore` is temporarily unmounted.
 
 ## Runtime Topology
 
@@ -38,7 +38,7 @@ flowchart LR
 
 ## Main Process Composition
 
-The main process imports each domain module and registers IPC handlers centrally in `src/main/index.ts`. That is intentionally simple to trace, but it makes the file large and creates a high-change hot spot.
+`src/main/index.ts` is a small bootstrap that logs early startup failures and then requires `src/main/app-main.ts`. The main process imports each domain module and registers IPC handlers centrally in `src/main/app-main.ts`. That is intentionally simple to trace, but it makes the file large and creates a high-change hot spot.
 
 ```ts
    1 | import {
@@ -211,6 +211,6 @@ To recreate this project, implement:
 
 ## Areas for Review
 
-- Should `src/main/index.ts` be split into per-domain IPC registration files to reduce merge conflicts and startup complexity?
+- Should `src/main/app-main.ts` be split into per-domain IPC registration files to reduce merge conflicts and startup complexity?
 - Should local model discovery support user-configurable roots instead of hard-coded fork-specific paths?
 - Should the app introduce a schema layer for `desktop.json`, `models.json`, and profile config mutations?

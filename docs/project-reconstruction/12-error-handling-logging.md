@@ -1,6 +1,6 @@
 # 12 - Error Handling and Logging
 
-Generated from repository state on 2026-06-04. No secrets are included; environment-variable names are documented without values.
+Generated from repository state on 2026-06-11. No secrets are included; environment-variable names are documented without values.
 
 ## Error Handling Patterns
 
@@ -137,7 +137,7 @@ Log sources:
 2. Use Settings log viewer for gateway/agent logs.
 3. Run `runHermesDoctor` from Settings or `window.hermesAPI.runHermesDoctor()`.
 4. Check `desktop.json`, `.env`, `config.yaml`, and `models.json`.
-5. For local model issues, check `local-model-server.pid`, `local-model-server-model`, `llama-server` availability, and `http://127.0.0.1:8080/v1/models`. If the app reports `llama-server was not found`, install llama.cpp with `brew install llama.cpp` or place a `llama-server` binary on PATH.
+5. For local model issues, check `local-model-server.pid`, `local-model-server-model`, `local-model-server-port`, `llama-server` availability, and `http://127.0.0.1:<port>/v1/models`. The launcher starts at `8080` but may use any free port through `8099`. If the app reports `llama-server was not found`, install llama.cpp with `brew install llama.cpp` or place a `llama-server` binary on PATH.
 
 ## Areas for Review
 

@@ -1,6 +1,6 @@
 # 07 - Business Logic and Core Algorithms
 
-Generated from repository state on 2026-06-04. No secrets are included; environment-variable names are documented without values.
+Generated from repository state on 2026-06-11. No secrets are included; environment-variable names are documented without values.
 
 ## Install and Runtime Orchestration
 
@@ -42,7 +42,7 @@ URL normalization:
 
 ## Local Model Discovery Algorithm
 
-The fork scans the two configured roots recursively, ignores macOS AppleDouble `._` files, skips tiny files below `1 * 1024 * 1024` bytes, accepts `.gguf` and `.safetensors`, and converts each file into a deterministic saved model entry. GGUF files are launchable through `llama-server`; safetensors files are discoverable but not directly launched.
+The fork scans configured roots recursively, with `/Users/Antman/Desktop/AI_Models` first and `/Volumes/MainStore/Development/AI_Models` second by default. It ignores macOS AppleDouble `._` files, skips tiny files below `1 * 1024 * 1024` bytes, accepts `.gguf` and `.safetensors`, filters embedding-only names from the chat picker, and converts each file into a deterministic saved model entry. GGUF files are launchable through `llama-server`; safetensors files are discoverable but not directly launched. Reconciliation sorts local-file entries by configured root priority so Desktop GGUF models remain the main/default candidates even when older MainStore entries already exist in `models.json`.
 
 ```ts
    1 | import { createHash } from "crypto";
@@ -51,9 +51,9 @@ The fork scans the two configured roots recursively, ignores macOS AppleDouble `
    4 | import { homedir } from "os";
    5 | import type { SavedModel } from "./models";
    6 |
-   7 | export const LOCAL_MODEL_ROOTS = [
-   8 |   "/Volumes/MainStore/Development/AI_Models",
-   9 |   join(homedir(), "Desktop", "AI_Models"),
+   7 | export const DEFAULT_LOCAL_MODEL_ROOTS = [
+   8 |   join(homedir(), "Desktop", "AI_Models"),
+   9 |   "/Volumes/MainStore/Development/AI_Models",
   10 | ];
   11 |
   12 | export interface LocalModelFile {
@@ -78,7 +78,7 @@ The fork scans the two configured roots recursively, ignores macOS AppleDouble `
   30 | }
   31 |
   32 | export function discoverLocalModelFiles(
-  33 |   roots: string[] = LOCAL_MODEL_ROOTS,
+  33 |   roots: string[] = getLocalModelRoots(),
   34 | ): LocalModelFile[] {
   35 |   const found: LocalModelFile[] = [];
   36 |
@@ -196,7 +196,7 @@ Model reconciliation preserves user-visible local file entries when drives disap
 
 ## Local Model Server Algorithm
 
-The launcher only starts a `.gguf` file that was discovered under the configured roots. It writes PID and model state files under `HERMES_HOME`, checks health at `http://127.0.0.1:8080/v1/models`, and uses `llama-server` from Homebrew, `/usr/local/bin`, or PATH.
+The launcher only starts `.gguf` files from configured/discovered roots. It writes PID, model, and port state files under `HERMES_HOME`, checks health at `http://127.0.0.1:<port>/v1/models`, and uses `llama-server` from Homebrew, `/usr/local/bin`, or PATH. It starts at port `8080`, searches through `8099`, and rewrites the selected model config to the actual returned base URL when another port is used.
 
 ```ts
  126 |         resolve(Boolean(res.statusCode && res.statusCode < 500));

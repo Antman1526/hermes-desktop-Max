@@ -1,6 +1,6 @@
 # 13 - Performance Optimization and Caching
 
-Generated from repository state on 2026-06-04. No secrets are included; environment-variable names are documented without values.
+Generated from repository state on 2026-06-11. No secrets are included; environment-variable names are documented without values.
 
 ## Existing Optimizations
 
@@ -130,7 +130,7 @@ Discovery is synchronous and recursive. This is simple and deterministic, but ca
   30 | }
   31 |
   32 | export function discoverLocalModelFiles(
-  33 |   roots: string[] = LOCAL_MODEL_ROOTS,
+  33 |   roots: string[] = getLocalModelRoots(),
   34 | ): LocalModelFile[] {
   35 |   const found: LocalModelFile[] = [];
   36 |

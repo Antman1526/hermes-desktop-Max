@@ -1,12 +1,12 @@
 # Hermes Desktop Max - AI Review Pack
 
-Generated from repository state on 2026-06-04. This condensed three-page pack is designed for another AI reviewer to quickly reason about optimization, refactoring, patterns, and architecture.
+Generated from repository state on 2026-06-11. This condensed three-page pack is designed for another AI reviewer to reason about optimization, refactoring, patterns, and architecture without first reading the full 15-document reconstruction set.
 
 ## Page 1 - Project Overview
 
-Hermes Desktop Max is an Electron + React desktop application for installing and operating Hermes Agent. The app owns the GUI, local process orchestration, profile/config editing, sessions UI, model registry, local model discovery, and sidecar integrations. Hermes Agent remains the backend brain and stores conversation state in SQLite.
+Hermes Desktop Max is an Electron + React desktop application for installing, configuring, and operating Hermes Agent. The desktop app owns GUI workflows, local process orchestration, profile/config editing, sessions UI, model registry, local model discovery, local GGUF launch, Paperclip, Claw3d/Hermes Office, schedules, tools, memory, and skills. Hermes Agent remains the backend brain and stores conversation state in SQLite under `~/.hermes`.
 
-Core stack: Electron 39, electron-vite 5, Vite 7, React 19, TypeScript 5.9, Tailwind 4, better-sqlite3, Vitest 4, electron-builder 26. Runtime state lives mostly under `~/.hermes`.
+Core stack: Electron `39.8.5`, electron-vite `5.0.0`, Vite `7.3.1`, React `19.2.4`, TypeScript `5.9.3`, Tailwind `4.2.2`, better-sqlite3 `12.8.0`, Vitest `4.1.4`, electron-builder `26.8.1`.
 
 High-level data flow:
 
@@ -21,307 +21,215 @@ flowchart TD
   Main --> HTTP["Hermes API / remote providers"]
 ```
 
-Important trade-off: privileged work is centralized in the main process, which is easy to audit but has produced a very large `src/main/index.ts` IPC registry. Renderer code is mostly cleanly separated from Node access.
+Important trade-off: privileged work is centralized in the main process, which is easy to audit but has produced a large `src/main/app-main.ts` IPC registry. Renderer code is mostly separated from Node access by `src/preload/index.ts`.
+
+Current local model decision: `/Users/Antman/Desktop/AI_Models` is the primary local model root. `/Volumes/MainStore/Development/AI_Models` remains as a fallback/external root. Local-file entries are sorted by configured root priority so Desktop GGUFs appear before MainStore entries.
 
 ## Page 2 - Key Code Walkthrough
 
-### Preload bridge
+### Preload Bridge Pattern
 
 ```ts
-  35 | const hermesAPI = {
-  36 |   // Installation
-  37 |   checkInstall: (): Promise<{
-  38 |     installed: boolean;
-  39 |     configured: boolean;
-  40 |     hasApiKey: boolean;
-  41 |   }> => ipcRenderer.invoke("check-install"),
-  42 |
-  43 |   verifyInstall: (): Promise<boolean> => ipcRenderer.invoke("verify-install"),
-  44 |
-  45 |   startInstall: (): Promise<{ success: boolean; error?: string }> =>
-  46 |     ipcRenderer.invoke("start-install"),
-  47 |
-  48 |   // Pre-install inspection + "use an existing installation" (issue #272)
-  49 |   inspectInstallTarget: (): Promise<{
-  50 |     hermesHome: string;
-  51 |     repoPath: string;
-  52 |     state: "fresh" | "update" | "replace";
-  53 |   }> => ipcRenderer.invoke("inspect-install-target"),
-  54 |
-  55 |   validateHermesHome: (dir: string): Promise<boolean> =>
-  56 |     ipcRenderer.invoke("validate-hermes-home", dir),
-  57 |
-  58 |   adoptHermesHome: (dir: string): Promise<boolean> =>
-  59 |     ipcRenderer.invoke("adopt-hermes-home", dir),
-  60 |
-  61 |   quitApp: (): Promise<void> => ipcRenderer.invoke("quit-app"),
-  62 |
-  63 |   onInstallProgress: (
-  64 |     callback: (progress: {
-  65 |       step: number;
-  66 |       totalSteps: number;
-  67 |       title: string;
-  68 |       detail: string;
-  69 |       log: string;
-  70 |     }) => void,
+// src/preload/index.ts
+const hermesAPI = {
+  getModelConfig: (
+    profile?: string,
+  ): Promise<{ provider: string; model: string; baseUrl: string }> =>
+    ipcRenderer.invoke("get-model-config", profile),
+
+  setModelConfig: (
+    provider: string,
+    model: string,
+    baseUrl: string,
+    profile?: string,
+  ): Promise<boolean> =>
+    ipcRenderer.invoke("set-model-config", provider, model, baseUrl, profile),
+
+  sendMessage: (
+    message: string,
+    profile?: string,
+    resumeSessionId?: string,
+    history?: Array<{ role: string; content: string }>,
+    attachments?: Attachment[],
+    contextFolder?: string,
+  ): Promise<{ response: string; sessionId?: string }> =>
+    ipcRenderer.invoke(
+      "send-message",
+      message,
+      profile,
+      resumeSessionId,
+      history,
+      attachments,
+      contextFolder,
+    ),
+};
 ```
 
-Intent: expose a narrow API surface and keep Node/Electron objects out of React. Review concern: the surface is now very large and lacks runtime input validators.
+Intent: expose typed capabilities to React while keeping Node/Electron objects out of the renderer. Review concern: the bridge has grown broad and would benefit from runtime validation schemas per IPC channel.
 
-### Local model discovery
+### Local Model Discovery and Root Priority
 
 ```ts
-   8 |   "/Volumes/MainStore/Development/AI_Models",
-   9 |   join(homedir(), "Desktop", "AI_Models"),
-  10 | ];
-  11 |
-  12 | export interface LocalModelFile {
-  13 |   path: string;
-  14 |   root: string;
-  15 |   format: "gguf" | "safetensors";
-  16 | }
-  17 |
-  18 | const SUPPORTED_FORMATS = new Set([".gguf", ".safetensors"]);
-  19 | const DEFAULT_LOCAL_BASE_URL = "http://localhost:8080/v1";
-  20 | const MIN_LOCAL_MODEL_BYTES = 1 * 1024 * 1024;
-  21 | function modelNameFromPath(path: string): string {
-  22 |   const withoutExt = basename(path, extname(path));
-  23 |   return (
-  24 |     "Local " + withoutExt.replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim()
-  25 |   );
-  26 | }
-  27 |
-  28 | function stableLocalModelId(path: string): string {
-  29 |   return `local-file-${createHash("sha1").update(path).digest("hex").slice(0, 16)}`;
-  30 | }
-  31 |
-  32 | export function discoverLocalModelFiles(
-  33 |   roots: string[] = LOCAL_MODEL_ROOTS,
-  34 | ): LocalModelFile[] {
-  35 |   const found: LocalModelFile[] = [];
-  36 |
-  37 |   function visit(root: string, dir: string): void {
-  38 |     let entries;
-  39 |     try {
-  40 |       entries = readdirSync(dir, { withFileTypes: true }).sort((a, b) =>
-  41 |         a.name.localeCompare(b.name),
-  42 |       );
-  43 |     } catch {
-  44 |       return;
-  45 |     }
-  46 |
-  47 |     for (const entry of entries) {
-  48 |       if (entry.name.startsWith("._")) continue;
-  49 |       const entryPath = join(dir, entry.name);
-  50 |       if (entry.isDirectory()) {
-  51 |         visit(root, entryPath);
-  52 |         continue;
-  53 |       }
-  54 |       if (!entry.isFile()) continue;
-  55 |
-  56 |       const ext = extname(entry.name).toLowerCase();
-  57 |       if (!SUPPORTED_FORMATS.has(ext)) continue;
-  58 |       try {
-  59 |         if (statSync(entryPath).size < MIN_LOCAL_MODEL_BYTES) continue;
-  60 |       } catch {
-  61 |         continue;
-  62 |       }
-  63 |       found.push({
-  59 |         path: entryPath,
-  60 |         root,
-  61 |         format: ext.slice(1) as LocalModelFile["format"],
-  62 |       });
-  63 |     }
-  64 |   }
-  65 |
-  66 |   for (const root of roots) {
-  67 |     if (existsSync(root)) visit(root, root);
-  68 |   }
-  69 |
-  70 |   return found;
-  71 | }
-  72 |
-  73 | export function buildLocalModelEntries(files: LocalModelFile[]): SavedModel[] {
-  74 |   return files.map((file) => ({
-  75 |     id: stableLocalModelId(file.path),
-  76 |     name: modelNameFromPath(file.path),
-  77 |     provider: "custom",
-  78 |     model: file.path,
+// src/main/config.ts
+export const DEFAULT_LOCAL_MODEL_ROOTS = [
+  join(homedir(), "Desktop", "AI_Models"),
+  "/Volumes/MainStore/Development/AI_Models",
+];
+
+// src/main/local-model-files.ts
+function sortLocalModelsByRootPriority(
+  models: SavedModel[],
+  roots: string[],
+): SavedModel[] {
+  return models
+    .map((entry, index) => ({ entry, index }))
+    .sort((a, b) => {
+      const aLocal = a.entry.source === "local-file";
+      const bLocal = b.entry.source === "local-file";
+      if (!aLocal || !bLocal) return a.index - b.index;
+
+      const rootDelta =
+        localRootRank(a.entry, roots) - localRootRank(b.entry, roots);
+      if (rootDelta !== 0) return rootDelta;
+
+      return (
+        (a.entry.name || a.entry.model).localeCompare(
+          b.entry.name || b.entry.model,
+        ) || a.index - b.index
+      );
+    })
+    .map(({ entry }) => entry);
+}
 ```
 
-Intent: make Antman's local model folders first-class model options, skip partial downloads/LFS pointer files, and keep unavailable external-drive models visible but disabled. Review concern: synchronous recursive scanning and `statSync` calls may block if external storage is slow.
+Intent: keep local model entries stable while making the Desktop GGUF folder the primary/default model source. Review concern: model discovery uses synchronous recursive filesystem access; slow external volumes can block the main process.
 
-### Safe local model launching
+### Safe Local GGUF Launch
 
 ```ts
- 126 |         resolve(Boolean(res.statusCode && res.statusCode < 500));
- 127 |         res.resume();
- 128 |       },
- 129 |     );
- 130 |     req.on("error", () => resolve(false));
- 131 |     req.on("timeout", () => {
- 132 |       req.destroy();
- 133 |       resolve(false);
- 134 |     });
- 135 |     req.end();
- 136 |   });
- 137 | }
- 138 |
- 139 | export async function waitForLocalModelServerReady({
- 140 |   timeoutMs = SERVER_START_TIMEOUT_MS,
- 141 |   intervalMs = SERVER_START_POLL_MS,
- 142 |   healthCheck = serverHealth,
- 143 | }: {
- 144 |   timeoutMs?: number;
- 145 |   intervalMs?: number;
- 146 |   healthCheck?: () => Promise<boolean>;
- 147 | } = {}): Promise<boolean> {
- 148 |   const deadline = Date.now() + timeoutMs;
- 149 |   do {
- 150 |     if (await healthCheck()) return true;
- 151 |     await new Promise((resolve) => setTimeout(resolve, intervalMs));
- 152 |   } while (Date.now() < deadline);
- 153 |   return healthCheck();
- 154 | }
- 155 |
- 156 | export async function getLocalModelServerStatus(): Promise<LocalModelServerStatus> {
- 157 |   const launcherPath = resolveLlamaServerCommand();
- 158 |   const launcherAvailable = commandAvailable(launcherPath);
- 159 |   const pid = readPid();
- 160 |   const managed = Boolean(pid && pidIsAlive(pid));
- 161 |   const running = await serverHealth();
- 162 |   if (pid && !managed && !running) clearStateFiles();
- 163 |
- 164 |   return {
- 165 |     running,
- 166 |     managed,
- 167 |     launcherAvailable,
- 168 |     launcherPath: launcherAvailable ? launcherPath : null,
- 169 |     modelPath: managed ? readModelPath() : null,
- 170 |     baseUrl: LOCAL_MODEL_SERVER_BASE_URL,
- 171 |     pid: managed ? pid : null,
- 172 |   };
- 173 | }
- 174 |
- 175 | export async function startLocalModelServer(
- 176 |   modelPath: string,
- 177 | ): Promise<LocalModelServerStatus> {
- 178 |   if (!isLaunchableLocalModel(modelPath)) {
- 179 |     return {
- 180 |       ...(await getLocalModelServerStatus()),
- 181 |       error: "Only GGUF model files can be launched with llama-server.",
- 182 |     };
- 183 |   }
+// src/main/local-model-server.ts
+export const LOCAL_MODEL_SERVER_PORT = 8080;
+export const LOCAL_MODEL_SERVER_CONTEXT_SIZE = 16_384;
+
+export function buildLlamaServerArgs(
+  modelPath: string,
+  port = LOCAL_MODEL_SERVER_PORT,
+): string[] {
+  return [
+    "--model",
+    modelPath,
+    "--host",
+    "127.0.0.1",
+    "--port",
+    String(port),
+    "--alias",
+    modelPath,
+    "--ctx-size",
+    String(LOCAL_MODEL_SERVER_CONTEXT_SIZE),
+    "--no-warmup",
+  ];
+}
 ```
 
-Intent: only launch discovered GGUF files through `llama-server`. Review concern: process lifecycle patterns are duplicated across several modules.
+Intent: launch only GGUF files through an OpenAI-compatible local `llama-server` endpoint. Port selection starts at `8080` and searches through `8099`; the app rewrites model config to the actual returned base URL. Review concern: process lifecycle code is repeated across Paperclip, Claw3d, gateway, and local model launch.
 
-### Session cache
+### Direct Local Chat Path
 
 ```ts
- 104 |     const rows = db
- 105 |       .prepare(
- 106 |         `SELECT s.id, s.started_at, s.source, s.message_count, s.model, s.title
- 107 |          FROM sessions s
- 108 |          WHERE s.started_at > ?
- 109 |          ORDER BY s.started_at DESC`,
- 110 |       )
- 111 |       .all(cache.lastSync > 0 ? cache.lastSync - 300 : 0) as Array<{
- 112 |       id: string;
- 113 |       started_at: number;
- 114 |       source: string;
- 115 |       message_count: number;
- 116 |       model: string;
- 117 |       title: string | null;
- 118 |     }>;
- 119 |
- 120 |     // Index existing sessions by id once so the per-row update below is
- 121 |     // O(1) instead of O(N). Without this, syncing N existing sessions
- 122 |     // against N new rows is O(N²) and visibly slows app startup once a
- 123 |     // user has accumulated thousands of sessions (issue #16).
- 124 |     const existingById = new Map<string, CachedSession>();
- 125 |     for (const s of cache.sessions) existingById.set(s.id, s);
- 126 |     const newSessions: CachedSession[] = [];
- 127 |
- 128 |     const refreshedIds = new Set<string>();
- 129 |     for (const row of rows) {
- 130 |       refreshedIds.add(row.id);
- 131 |       const existing = existingById.get(row.id);
- 132 |       if (existing) {
- 133 |         existing.messageCount = row.message_count;
- 134 |         if (row.model) existing.model = row.model;
- 135 |         if (row.title) existing.title = row.title;
- 136 |         continue;
- 137 |       }
- 138 |
- 139 |       let title = row.title || "";
- 140 |       if (!title) {
- 141 |         try {
- 142 |           const msg = db
- 143 |             .prepare(
- 144 |               `SELECT content FROM messages
- 145 |                WHERE session_id = ? AND role = 'user' AND content IS NOT NULL
- 146 |                ORDER BY timestamp, id LIMIT 1`,
- 147 |             )
- 148 |             .get(row.id) as { content: string } | undefined;
- 149 |           title = msg
- 150 |             ? generateTitle(msg.content)
- 151 |             : t("sessions.newConversation", getAppLocale());
- 152 |         } catch {
- 153 |           title = t("sessions.newConversation", getAppLocale());
- 154 |         }
- 155 |       }
- 156 |
- 157 |       newSessions.push({
- 158 |         id: row.id,
- 159 |         title,
- 160 |         startedAt: row.started_at,
- 161 |         source: row.source,
- 162 |         messageCount: row.message_count,
- 163 |         model: row.model || "",
- 164 |       });
- 165 |     }
- 166 |
- 167 |     // Phase 2: refresh message_count for cached sessions that weren't
- 168 |     // returned by the lastSync-windowed query above. Without this, an
- 169 |     // old session that's still accumulating messages keeps the stale
- 170 |     // count it had at first sync — the renderer reads from the cache,
- 171 |     // so the UI reports e.g. 15 messages when the conversation actually
- 172 |     // has 200+. Issue #226. Cheap (single column, no joins, batched IN
- 173 |     // clause), and skipped entirely on a first sync since cache.sessions
- 174 |     // is empty.
- 175 |     const staleIds = cache.sessions
- 176 |       .map((s) => s.id)
- 177 |       .filter((id) => !refreshedIds.has(id));
- 178 |     if (staleIds.length > 0) {
+// src/main/hermes.ts
+export async function sendMessage(
+  message: string,
+  cb: ChatCallbacks,
+  profile?: string,
+  resumeSessionId?: string,
+  history?: Array<{ role: string; content: string }>,
+  attachments?: Attachment[],
+  contextFolder?: string,
+): Promise<ChatHandle> {
+  ensureInitialized();
+
+  const mc = getModelConfig(profile);
+  if (!isRemoteMode() && shouldUseDirectLocalModelEndpoint(mc)) {
+    return sendMessageViaDirectLocalModel(
+      message,
+      cb,
+      profile,
+      resumeSessionId,
+      history,
+      attachments,
+      contextFolder,
+    );
+  }
+
+  if (isRemoteMode()) {
+    return sendMessageViaApi(
+      message,
+      cb,
+      profile,
+      resumeSessionId,
+      history,
+      attachments,
+      contextFolder,
+    );
+  }
+
+  // local gateway or CLI fallback follows...
+}
 ```
 
-Intent: avoid startup/session-list slowdown with thousands of sessions. Review concern: cache invalidation is file-based and not schema-versioned.
+Intent: avoid routing localhost OpenAI-compatible local model calls through the Hermes gateway when a direct call is safer and simpler. Review concern: direct local requests are non-streaming today, while gateway requests stream.
 
-## Page 3 - Dependencies, Pain Points, and Design Trade-Offs
+## Page 3 - Data Flow, Dependencies, Pain Points
 
-Data dependencies:
+Persistent state:
 
-- SQLite `state.db` tables `sessions`, `messages`, and optional `messages_fts`.
-- JSON stores: `desktop.json`, `models.json`, `desktop/sessions.json`.
-- YAML store: `config.yaml`.
-- Profile env files containing provider/tool secrets.
+- `~/.hermes/config.yaml`: model/provider/tool configuration.
+- `~/.hermes/.env`: provider keys and local gateway auth.
+- `~/.hermes/desktop.json`: connection mode, SSH, Paperclip, local model roots.
+- `~/.hermes/models.json`: saved/default/custom/local-file models.
+- `~/.hermes/state.db`: Hermes Agent sessions/messages/tools/reasoning.
+- `~/.hermes/profiles/<name>`: isolated profile homes.
 
-Known limitations and technical debt:
+Session read flow:
 
-- `src/main/index.ts` is a central IPC hot spot with many unrelated responsibilities.
-- Provider/env-key mapping is duplicated across renderer constants, installer, setup/models screens, and chat routing.
-- Secrets are stored in profile files rather than OS credential stores.
-- Local model roots are hard-coded for this fork.
+```ts
+// src/main/sessions.ts
+function getDb(readonly = true): Database.Database | null {
+  const dbPath = activeStateDbPath();
+  if (!existsSync(dbPath)) return null;
+  return new Database(dbPath, readonly ? { readonly: true } : {});
+}
+```
+
+The desktop reads Hermes Agent SQLite directly for sessions, messages, FTS search, reasoning/tool-call reconstruction, and attachment decoding. This is practical and fast, but it couples the app to the agent DB schema.
+
+Current validated Desktop GGUF models:
+
+- `DeepSeek-R1-Distill-Qwen-14B-Q4_K_M.gguf`
+- `gemma-4-12b-it-Q4_K_M.gguf`
+- `gemma-4-E4B-it-Q4_K_M.gguf`
+- `Llama-3.2-3B-Instruct-Q4_K_M.gguf`
+- `Phi-4-mini-instruct-Q4_K_M.gguf`
+- `Qwen2.5-14B-Instruct-Q4_K_M.gguf`
+- `Qwen3.5-4B-Q4_K_M.gguf`
+- `Qwen3.5-9B-Q4_K_M.gguf`
+
+Known pain points:
+
+- `src/main/app-main.ts` is a large IPC registry and a change hotspot.
+- Several modules implement similar child-process lifecycle patterns.
 - Local model scanning is synchronous.
-- Error payloads are inconsistent: boolean, null, throws, and `{ success, error }` all coexist.
-- Electron-builder packaging can be slow if file globs include too much workspace content; current config narrows packaged files.
+- Direct local model chat is non-streaming.
+- The app reads an external SQLite schema it does not migrate.
+- Some CI/release workflow names still need fork-specific validation before public release.
+- `models.json` reconciliation is intentionally conservative, so dead local-file entries can accumulate until explicitly removed.
 
 ## Areas for Review
 
-- What IPC handlers should be split into domain registrars first?
-- How would you design a shared provider registry that covers UI labels, env keys, install gates, and runtime routing?
-- Should local model folders be configurable in Settings, and should scans be async/cancellable with an mtime cache?
-- Which secrets should move to OS keychain first?
-- What runtime validation library or pattern should guard the preload/main IPC boundary?
-- Should session cache and desktop config files receive explicit schema versions and migrations?
+- Should the IPC bridge be split into domain modules with generated runtime validators?
+- Should local model discovery move to an async worker or cached background scan?
+- Should `llama-server`, Paperclip, Claw3d, and Hermes gateway share a common process manager abstraction?
+- Should direct local model calls support streaming so local GGUF UX matches hosted/gateway chat?
+- Should the desktop stop reading `state.db` directly and instead consume a formal Hermes Agent session API?
+- Are there unused UI/icon/highlighting dependencies that can be consolidated to reduce bundle size?
+- Should release automation produce checksums/SBOMs and verify `Hermes Desktop Max.app` naming across all jobs?
