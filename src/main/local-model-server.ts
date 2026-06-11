@@ -1,5 +1,12 @@
 import { ChildProcess, spawn, spawnSync } from "child_process";
-import { existsSync, readFileSync, unlinkSync } from "fs";
+import {
+  appendFileSync,
+  closeSync,
+  existsSync,
+  openSync,
+  readFileSync,
+  unlinkSync,
+} from "fs";
 import http from "http";
 import net from "net";
 import { extname, join } from "path";
@@ -13,12 +20,15 @@ import { pidIsAlive, safeWriteFile } from "./utils";
 
 export const LOCAL_MODEL_SERVER_PORT = 8080;
 export const LOCAL_MODEL_SERVER_BASE_URL = `http://localhost:${LOCAL_MODEL_SERVER_PORT}/v1`;
+export const LOCAL_MODEL_SERVER_CONTEXT_SIZE = 65_536;
 export const LOCAL_MODEL_SERVER_MISSING_LLAMA_HINT =
   "llama-server was not found. Install llama.cpp with `brew install llama.cpp`, or put a llama-server binary on PATH.";
 
 const PID_FILE = join(HERMES_HOME, "local-model-server.pid");
 const MODEL_FILE = join(HERMES_HOME, "local-model-server-model");
 const PORT_FILE = join(HERMES_HOME, "local-model-server-port");
+const LOG_FILE = join(HERMES_HOME, "local-model-server.log");
+const LLAMA_LOG_FILE = join(HERMES_HOME, "local-model-server-llama.log");
 const LLAMA_SERVER_CANDIDATES = [
   "/opt/homebrew/bin/llama-server",
   "/usr/local/bin/llama-server",
@@ -28,6 +38,34 @@ const SERVER_START_TIMEOUT_MS = 120_000;
 const SERVER_START_POLL_MS = 500;
 
 let localModelProcess: ChildProcess | null = null;
+
+function logLocalModelServer(message: string): void {
+  try {
+    appendFileSync(
+      LOG_FILE,
+      `[${new Date().toISOString()}] ${message}\n`,
+      "utf-8",
+    );
+  } catch {
+    /* best effort */
+  }
+}
+
+function localModelServerEnv(): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = { ...process.env, PATH: getEnhancedPath() };
+  for (const key of Object.keys(env)) {
+    if (
+      key.startsWith("ELECTRON_") ||
+      key.startsWith("DYLD_") ||
+      key.startsWith("LD_")
+    ) {
+      delete env[key];
+    }
+  }
+  delete env.NODE_OPTIONS;
+  delete env.NODE_REPL_NODE_MODULE_DIRS;
+  return env;
+}
 
 export interface LocalModelServerStatus {
   running: boolean;
@@ -72,6 +110,8 @@ export function buildLlamaServerArgs(
     String(port),
     "--alias",
     modelPath,
+    "--ctx-size",
+    String(LOCAL_MODEL_SERVER_CONTEXT_SIZE),
   ];
 }
 
@@ -266,33 +306,37 @@ export async function getLocalModelServerStatus(): Promise<LocalModelServerStatu
 export async function startLocalModelServer(
   modelPath: string,
 ): Promise<LocalModelServerStatus> {
+  logLocalModelServer(`start requested model=${modelPath}`);
   if (!isLaunchableLocalModel(modelPath)) {
+    logLocalModelServer("rejected: non-GGUF model");
     return {
       ...(await getLocalModelServerStatus()),
       error: "Only GGUF model files can be launched with llama-server.",
     };
   }
-  if (!isDiscoveredLocalModelPath(modelPath)) {
-    return {
-      ...(await getLocalModelServerStatus()),
-      error: "Model file is not in a configured local model folder.",
-    };
-  }
   if (!existsSync(modelPath)) {
+    logLocalModelServer("rejected: model file missing");
     return {
       ...(await getLocalModelServerStatus()),
       error: `Model file does not exist: ${modelPath}`,
     };
   }
 
+  logLocalModelServer("checking current local model server status");
   const current = await getLocalModelServerStatus();
+  logLocalModelServer(
+    `current status running=${current.running} managed=${current.managed} model=${current.modelPath || ""}`,
+  );
   if (current.running && current.modelPath === modelPath) return current;
   if (current.managed && current.modelPath !== modelPath) {
+    logLocalModelServer("stopping existing managed local model server");
     stopLocalModelServer();
   }
 
   const command = resolveLlamaServerCommand();
+  logLocalModelServer(`resolved command=${command}`);
   if (!commandAvailable(command)) {
+    logLocalModelServer("rejected: llama-server command unavailable");
     return {
       ...current,
       launcherAvailable: false,
@@ -301,38 +345,75 @@ export async function startLocalModelServer(
     };
   }
 
+  logLocalModelServer("finding available local model server port");
   const port = await findAvailableLocalModelPort();
   if (!port) {
+    logLocalModelServer("rejected: no free local model server port");
     return {
       ...current,
       error: "No free local model server port was found between 8080 and 8099.",
     };
   }
+  logLocalModelServer(`using port=${port}`);
 
-  localModelProcess = spawn(command, buildLlamaServerArgs(modelPath, port), {
-    env: { ...process.env, PATH: getEnhancedPath() },
-    detached: process.platform !== "win32",
-    stdio: "ignore",
-    ...HIDDEN_SUBPROCESS_OPTIONS,
-  });
+  const args = buildLlamaServerArgs(modelPath, port);
+  logLocalModelServer(
+    `spawning command=${command} args=${JSON.stringify(args)}`,
+  );
+  let logFd: number | null = null;
+  try {
+    logFd = openSync(LLAMA_LOG_FILE, "a");
+    localModelProcess = spawn(command, args, {
+      env: localModelServerEnv(),
+      detached: process.platform !== "win32",
+      stdio: ["ignore", logFd, logFd],
+      ...HIDDEN_SUBPROCESS_OPTIONS,
+    });
+  } finally {
+    if (logFd !== null) closeSync(logFd);
+  }
   localModelProcess.unref();
 
+  let exited = false;
+  let exitDetail = "";
+  localModelProcess.once("exit", (code, signal) => {
+    exited = true;
+    exitDetail = `code=${code ?? "null"} signal=${signal ?? "null"}`;
+    logLocalModelServer(`child exited ${exitDetail}`);
+  });
+
   if (localModelProcess.pid) {
+    logLocalModelServer(`spawned pid=${localModelProcess.pid}`);
     safeWriteFile(PID_FILE, String(localModelProcess.pid));
     safeWriteFile(MODEL_FILE, modelPath);
     safeWriteFile(PORT_FILE, String(port));
+  } else {
+    logLocalModelServer("spawn returned without pid");
   }
 
-  const ready = await waitForLocalModelServerReady({
-    healthCheck: () => serverHealth(port),
-  });
+  logLocalModelServer("waiting for server readiness");
+  const deadline = Date.now() + SERVER_START_TIMEOUT_MS;
+  let ready = false;
+  do {
+    if (await serverHealth(port)) {
+      ready = true;
+      break;
+    }
+    if (exited) break;
+    await new Promise((resolve) => setTimeout(resolve, SERVER_START_POLL_MS));
+  } while (Date.now() < deadline);
+  logLocalModelServer(`readiness result=${ready}`);
   const next = await getLocalModelServerStatus();
+  logLocalModelServer(
+    `post-start status running=${next.running} managed=${next.managed} model=${next.modelPath || ""}`,
+  );
   return ready
     ? next
     : {
         ...next,
-        error:
-          "llama-server started but did not become ready within 120 seconds.",
+        error: exited
+          ? `llama-server exited before it became ready (${exitDetail}). Check ${LLAMA_LOG_FILE}.`
+          : "llama-server started but did not become ready within 120 seconds.",
       };
 }
 

@@ -122,6 +122,7 @@ import { listModels, addModel, removeModel, updateModel } from "./models";
 import {
   getLocalModelServerStatus,
   getLocalModelRuntimeStatus,
+  isLaunchableLocalModel,
   startLocalModelServer,
   stopLocalModelServer,
 } from "./local-model-server";
@@ -841,6 +842,24 @@ function setupIPC(): void {
       attachments?: Attachment[],
       contextFolder?: string,
     ) => {
+      if (!isRemoteMode()) {
+        const modelConfig = getModelConfig(profile);
+        if (isLaunchableLocalModel(modelConfig.model)) {
+          const status = await startLocalModelServer(modelConfig.model);
+          if (!status.error && status.baseUrl !== modelConfig.baseUrl) {
+            setModelConfig(
+              modelConfig.provider,
+              modelConfig.model,
+              status.baseUrl,
+              profile,
+            );
+          } else if (status.error) {
+            console.warn("[local-model] Auto-start skipped:", status.error);
+            throw new Error(status.error);
+          }
+        }
+      }
+
       if (!isRemoteMode() && !isGatewayRunning()) {
         startGateway(profile);
       }

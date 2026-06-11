@@ -6,7 +6,8 @@ import {
   appendFileSync,
   unlinkSync,
   mkdirSync,
-  createWriteStream,
+  openSync,
+  closeSync,
 } from "fs";
 import { join } from "path";
 import { homedir } from "os";
@@ -24,6 +25,7 @@ import {
   getConnectionConfig,
   getModelConfig,
   readEnv,
+  setEnvValue,
 } from "./config";
 import {
   getSshTunnelUrl,
@@ -1146,6 +1148,14 @@ export function startGateway(profile?: string): boolean {
     API_SERVER_ENABLED: "true", // Ensure API server starts with gateway
   };
 
+  if (!getApiServerKey(profile)) {
+    const key = `desk-${randomUUID()}`;
+    setEnvValue("API_SERVER_KEY", key, profile);
+    if (profile && profile !== "default") {
+      setEnvValue("API_SERVER_KEY", key);
+    }
+  }
+
   // Inject ALL profile API keys so the gateway can authenticate with any provider.
   const profileEnv = readEnv(profile);
   for (const [key, value] of Object.entries(profileEnv)) {
@@ -1163,15 +1173,21 @@ export function startGateway(profile?: string): boolean {
     // ignore
   }
   const logPath = join(logDir, "gateway-stderr.log");
-  const stderrStream = createWriteStream(logPath, { flags: "a" });
-
-  gatewayProcess = spawn(HERMES_PYTHON, hermesCliArgs(["gateway"]), {
-    cwd: HERMES_REPO,
-    env: gatewayEnv,
-    stdio: ["ignore", "ignore", stderrStream],
-    detached: true,
-    ...HIDDEN_SUBPROCESS_OPTIONS,
-  });
+  let stderrFd: number | null = null;
+  try {
+    stderrFd = openSync(logPath, "a");
+    gatewayProcess = spawn(HERMES_PYTHON, hermesCliArgs(["gateway"]), {
+      cwd: HERMES_REPO,
+      env: gatewayEnv,
+      stdio: ["ignore", "ignore", stderrFd],
+      detached: true,
+      ...HIDDEN_SUBPROCESS_OPTIONS,
+    });
+  } finally {
+    if (stderrFd !== null) {
+      closeSync(stderrFd);
+    }
+  }
 
   gatewayProcess.on("error", (err) => {
     console.error("[gateway] Failed to spawn gateway process:", err.message);

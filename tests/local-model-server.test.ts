@@ -8,6 +8,7 @@ import {
   isLocalModelServerHealthy,
   isDiscoveredLocalModelPath,
   isLaunchableLocalModel,
+  LOCAL_MODEL_SERVER_CONTEXT_SIZE,
   LOCAL_MODEL_SERVER_MISSING_LLAMA_HINT,
   resolveLlamaServerCommand,
   waitForLocalModelServerReady,
@@ -43,6 +44,8 @@ describe("local model server launcher helpers", () => {
       "8080",
       "--alias",
       "/models/Hermes-3.gguf",
+      "--ctx-size",
+      String(LOCAL_MODEL_SERVER_CONTEXT_SIZE),
     ]);
   });
 

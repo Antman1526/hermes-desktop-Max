@@ -1,29 +1,34 @@
 import { EventEmitter } from "events";
 import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 
-const { spawned, TEST_HOME, healthStatuses, apiRequests } = vi.hoisted(() => {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const path = require("path");
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const os = require("os");
-  return {
-    spawned: [] as Array<
-      EventEmitter & {
-        stdout: EventEmitter;
-        stderr: EventEmitter;
-        killed: boolean;
-        kill: ReturnType<typeof vi.fn>;
-        unref: ReturnType<typeof vi.fn>;
-      }
-    >,
-    TEST_HOME: path.join(os.tmpdir(), `hermes-cli-session-test-${Date.now()}`),
-    healthStatuses: [] as number[],
-    apiRequests: [] as Array<{
-      body: string;
-      headers: Record<string, string>;
-    }>,
-  };
-});
+const { spawned, spawnOptions, TEST_HOME, healthStatuses, apiRequests } =
+  vi.hoisted(() => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const path = require("path");
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const os = require("os");
+    return {
+      spawned: [] as Array<
+        EventEmitter & {
+          stdout: EventEmitter;
+          stderr: EventEmitter;
+          killed: boolean;
+          kill: ReturnType<typeof vi.fn>;
+          unref: ReturnType<typeof vi.fn>;
+        }
+      >,
+      spawnOptions: [] as Array<Record<string, unknown>>,
+      TEST_HOME: path.join(
+        os.tmpdir(),
+        `hermes-cli-session-test-${Date.now()}`,
+      ),
+      healthStatuses: [] as number[],
+      apiRequests: [] as Array<{
+        body: string;
+        headers: Record<string, string>;
+      }>,
+    };
+  });
 
 vi.mock("http", () => ({
   default: {
@@ -102,7 +107,32 @@ vi.mock("https", () => ({
 
 vi.mock("child_process", () => ({
   default: {
-    spawn: vi.fn(() => {
+    spawn: vi.fn(
+      (
+        _command?: string,
+        _args?: string[],
+        options?: Record<string, unknown>,
+      ) => {
+        spawnOptions.push(options || {});
+        const proc = Object.assign(new EventEmitter(), {
+          stdout: new EventEmitter(),
+          stderr: new EventEmitter(),
+          killed: false,
+          kill: vi.fn(),
+          unref: vi.fn(),
+        });
+        spawned.push(proc);
+        return proc;
+      },
+    ),
+  },
+  spawn: vi.fn(
+    (
+      _command?: string,
+      _args?: string[],
+      options?: Record<string, unknown>,
+    ) => {
+      spawnOptions.push(options || {});
       const proc = Object.assign(new EventEmitter(), {
         stdout: new EventEmitter(),
         stderr: new EventEmitter(),
@@ -112,19 +142,8 @@ vi.mock("child_process", () => ({
       });
       spawned.push(proc);
       return proc;
-    }),
-  },
-  spawn: vi.fn(() => {
-    const proc = Object.assign(new EventEmitter(), {
-      stdout: new EventEmitter(),
-      stderr: new EventEmitter(),
-      killed: false,
-      kill: vi.fn(),
-      unref: vi.fn(),
-    });
-    spawned.push(proc);
-    return proc;
-  }),
+    },
+  ),
 }));
 
 vi.mock("../src/main/installer", () => ({
@@ -138,6 +157,7 @@ vi.mock("../src/main/installer", () => ({
 vi.mock("../src/main/config", () => ({
   getModelConfig: () => ({ model: "test-model", provider: "openrouter" }),
   readEnv: () => ({}),
+  setEnvValue: () => {},
   getApiServerKey: () => "",
   getConnectionConfig: () => ({ mode: "local" as const }),
 }));
@@ -181,6 +201,7 @@ describe("CLI fallback session id propagation", () => {
     stopGateway(true);
     stopHealthPolling();
     spawned.length = 0;
+    spawnOptions.length = 0;
   });
 
   it("captures the quiet CLI session id from stderr so the next desktop turn can resume it", async () => {
@@ -271,6 +292,18 @@ describe("CLI fallback session id propagation", () => {
       messages: [{ role: "user", content: "hi" }],
       stream: true,
     });
+  });
+
+  it("starts the gateway with a concrete stderr file descriptor", () => {
+    expect(startGateway()).toBe(true);
+
+    expect(spawned).toHaveLength(1);
+    expect(spawnOptions).toHaveLength(1);
+    expect(spawnOptions[0].stdio).toEqual([
+      "ignore",
+      "ignore",
+      expect.any(Number),
+    ]);
   });
 
   it("re-checks health when a previously-ready local gateway is restarted cold", async () => {

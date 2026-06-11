@@ -95,11 +95,30 @@ export function useChatActions({
           attachments,
           contextFolder ?? undefined,
         );
-      } catch {
-        // onChatError IPC already surfaces this to the user
+      } catch (err) {
+        setIsLoading(false);
+        const message = err instanceof Error ? err.message : String(err);
+        setMessages((prev) => {
+          const last = prev[prev.length - 1];
+          if (
+            last?.role === "agent" &&
+            "content" in last &&
+            last.content.startsWith("Error:")
+          ) {
+            return prev;
+          }
+          return [
+            ...prev,
+            {
+              id: `error-${Date.now()}`,
+              role: "agent",
+              content: `Error: ${message || "Failed to send message."}`,
+            },
+          ];
+        });
       }
     },
-    [profile, hermesSessionId, contextFolder],
+    [profile, hermesSessionId, contextFolder, setIsLoading, setMessages],
   );
 
   const handleSend = useCallback(
