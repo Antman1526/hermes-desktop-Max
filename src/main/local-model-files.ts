@@ -171,6 +171,36 @@ function inferRoot(
   );
 }
 
+function localRootRank(entry: SavedModel, roots: string[]): number {
+  const modelRoot = entry.modelRoot || inferRoot(entry.modelPath, roots);
+  const index = modelRoot ? roots.indexOf(modelRoot) : -1;
+  return index === -1 ? roots.length : index;
+}
+
+function sortLocalModelsByRootPriority(
+  models: SavedModel[],
+  roots: string[],
+): SavedModel[] {
+  return models
+    .map((entry, index) => ({ entry, index }))
+    .sort((a, b) => {
+      const aLocal = a.entry.source === "local-file";
+      const bLocal = b.entry.source === "local-file";
+      if (!aLocal || !bLocal) return a.index - b.index;
+
+      const rootDelta =
+        localRootRank(a.entry, roots) - localRootRank(b.entry, roots);
+      if (rootDelta !== 0) return rootDelta;
+
+      return (
+        (a.entry.name || a.entry.model).localeCompare(
+          b.entry.name || b.entry.model,
+        ) || a.index - b.index
+      );
+    })
+    .map(({ entry }) => entry);
+}
+
 export function mergeDiscoveredLocalModelEntries(
   existing: SavedModel[],
   {
@@ -234,5 +264,5 @@ export function mergeDiscoveredLocalModelEntries(
     }
   }
 
-  return reconciled;
+  return sortLocalModelsByRootPriority(reconciled, roots);
 }

@@ -976,7 +976,7 @@ function Settings({ profile }: { profile?: string }): React.JSX.Element {
               type="text"
               value={newLocalModelRoot}
               onChange={(e) => setNewLocalModelRoot(e.target.value)}
-              placeholder="/Volumes/MainStore/Development/AI_Models"
+              placeholder="/Users/Antman/Desktop/AI_Models"
               onKeyDown={(e) => {
                 if (e.key === "Enter") void handleAddLocalModelRoot();
               }}

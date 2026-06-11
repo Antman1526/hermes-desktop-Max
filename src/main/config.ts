@@ -66,8 +66,8 @@ export function writeDesktopConfig(data: Record<string, unknown>): void {
 }
 
 export const DEFAULT_LOCAL_MODEL_ROOTS = [
-  "/Volumes/MainStore/Development/AI_Models",
   join(homedir(), "Desktop", "AI_Models"),
+  "/Volumes/MainStore/Development/AI_Models",
 ];
 
 export function sanitizeLocalModelRoots(roots: unknown): string[] {

@@ -26,6 +26,8 @@ describe("local model root settings", () => {
       await import("../src/main/config");
 
     expect(getLocalModelRoots()).toEqual(DEFAULT_LOCAL_MODEL_ROOTS);
+    expect(DEFAULT_LOCAL_MODEL_ROOTS[0]).toContain("Desktop");
+    expect(DEFAULT_LOCAL_MODEL_ROOTS[0]).toContain("AI_Models");
   });
 
   it("trims and deduplicates configured roots", async () => {

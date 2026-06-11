@@ -159,6 +159,34 @@ describe("local model file discovery", () => {
     ]);
   });
 
+  it("orders local-file entries by configured root priority", () => {
+    const mainStore = join(TEST_DIR, "MainStore", "AI_Models");
+    const desktop = join(TEST_DIR, "Desktop", "AI_Models");
+    const mainStorePath = join(mainStore, "GGUF", "Qwen3.5-9B.gguf");
+    const desktopPath = join(desktop, "GGUF", "Phi-4-mini.gguf");
+    mkdirSync(join(mainStore, "GGUF"), { recursive: true });
+    mkdirSync(join(desktop, "GGUF"), { recursive: true });
+    writeFileSync(mainStorePath, Buffer.alloc(1_100_000));
+    writeFileSync(desktopPath, Buffer.alloc(1_100_000));
+
+    const existing = buildLocalModelEntries(
+      discoverLocalModelFiles([mainStore, desktop]),
+    );
+    const discovered = buildLocalModelEntries(
+      discoverLocalModelFiles([desktop, mainStore]),
+    );
+
+    const next = mergeDiscoveredLocalModelEntries(existing, {
+      discovered,
+      roots: [desktop, mainStore],
+    });
+
+    expect(next.filter((entry) => entry.source === "local-file")).toEqual([
+      expect.objectContaining({ model: desktopPath }),
+      expect.objectContaining({ model: mainStorePath }),
+    ]);
+  });
+
   it("removes previously saved embedding-only local-file entries from chat models", () => {
     const root = join(TEST_DIR, "AI_Models");
     const embeddingPath = join(root, "GGUF", "nomic-embed-text-v1.5.f16.gguf");
