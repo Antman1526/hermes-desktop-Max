@@ -32,6 +32,13 @@ const SUPPORTED_FORMATS = new Set([".gguf", ".safetensors"]);
 const DEFAULT_LOCAL_BASE_URL = "http://localhost:8080/v1";
 const MIN_LOCAL_MODEL_BYTES = 1 * 1024 * 1024;
 const LOCAL_MODEL_SCAN_CACHE_FILE = join(HERMES_HOME, "local-model-scan.json");
+const NON_CHAT_MODEL_NAME_PATTERNS = [
+  /\bembed(?:ding)?s?\b/i,
+  /\bnomic[-_. ]?embed\b/i,
+  /\bbge[-_. ]/i,
+  /\be5[-_. ]/i,
+  /\bgte[-_. ]/i,
+];
 
 function modelNameFromPath(path: string): string {
   const withoutExt = basename(path, extname(path));
@@ -42,6 +49,11 @@ function modelNameFromPath(path: string): string {
 
 function stableLocalModelId(path: string): string {
   return `local-file-${createHash("sha1").update(path).digest("hex").slice(0, 16)}`;
+}
+
+export function isLikelyChatLocalModelFile(path: string): boolean {
+  const name = basename(path, extname(path)).replace(/[_-]+/g, " ");
+  return !NON_CHAT_MODEL_NAME_PATTERNS.some((pattern) => pattern.test(name));
 }
 
 export function discoverLocalModelFiles(
@@ -70,6 +82,7 @@ export function discoverLocalModelFiles(
 
       const ext = extname(entry.name).toLowerCase();
       if (!SUPPORTED_FORMATS.has(ext)) continue;
+      if (!isLikelyChatLocalModelFile(entry.name)) continue;
       try {
         const stat = statSync(entryPath);
         if (stat.size < MIN_LOCAL_MODEL_BYTES) continue;
@@ -165,12 +178,17 @@ export function mergeDiscoveredLocalModelEntries(
     roots = LOCAL_MODEL_ROOTS,
   }: { discovered: SavedModel[]; roots?: string[] },
 ): SavedModel[] {
+  const chatCapableExisting = existing.filter(
+    (entry) =>
+      entry.source !== "local-file" ||
+      isLikelyChatLocalModelFile(entry.modelPath || entry.model),
+  );
   const discoveredByModel = new Map(
     discovered.map((entry) => [`${entry.provider}:${entry.model}`, entry]),
   );
   const seen = new Set<string>();
 
-  const reconciled = existing.map((entry) => {
+  const reconciled = chatCapableExisting.map((entry) => {
     if (entry.source !== "local-file") return entry;
 
     const key = `${entry.provider}:${entry.model}`;
@@ -210,7 +228,7 @@ export function mergeDiscoveredLocalModelEntries(
     const key = `${entry.provider}:${entry.model}`;
     if (
       !seen.has(key) &&
-      !existing.some((m) => `${m.provider}:${m.model}` === key)
+      !chatCapableExisting.some((m) => `${m.provider}:${m.model}` === key)
     ) {
       reconciled.push(entry);
     }

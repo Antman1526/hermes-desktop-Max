@@ -35,7 +35,7 @@ const LLAMA_SERVER_CANDIDATES = [
   "/usr/local/bin/llama-server",
 ];
 const LOCAL_MODEL_SERVER_MAX_PORT = 8099;
-const SERVER_START_TIMEOUT_MS = 120_000;
+const SERVER_START_TIMEOUT_MS = 300_000;
 const SERVER_START_POLL_MS = 500;
 
 let localModelProcess: ChildProcess | null = null;
@@ -120,6 +120,7 @@ export function buildLlamaServerArgs(
     modelPath,
     "--ctx-size",
     String(LOCAL_MODEL_SERVER_CONTEXT_SIZE),
+    "--no-warmup",
   ];
 }
 
@@ -432,14 +433,19 @@ export async function startLocalModelServer(
   logLocalModelServer(
     `post-start status running=${next.running} managed=${next.managed} model=${next.modelPath || ""}`,
   );
-  return ready
-    ? next
-    : {
-        ...next,
-        error: exited
-          ? `llama-server exited before it became ready (${exitDetail}). Check ${LLAMA_LOG_FILE}.`
-          : "llama-server started but did not become ready within 120 seconds.",
-      };
+  if (ready) return next;
+
+  const error = exited
+    ? `llama-server exited before it became ready (${exitDetail}). Check ${LLAMA_LOG_FILE}.`
+    : `llama-server started but did not become ready within ${Math.round(
+        SERVER_START_TIMEOUT_MS / 1000,
+      )} seconds.`;
+  logLocalModelServer(`startup failed: ${error}`);
+  stopLocalModelServer();
+  return {
+    ...(await getLocalModelServerStatus()),
+    error,
+  };
 }
 
 export function stopLocalModelServer(): boolean {

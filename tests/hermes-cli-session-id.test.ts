@@ -329,7 +329,7 @@ describe("CLI fallback session id propagation", () => {
   it("routes loopback OpenAI-compatible models directly instead of spawning the agent gateway", async () => {
     modelConfig.provider = "custom";
     modelConfig.model = "local-test-model";
-    modelConfig.baseUrl = "http://127.0.0.1:8081/v1";
+    modelConfig.baseUrl = "http://localhost:8081/v1";
 
     const chunks: string[] = [];
     await expect(

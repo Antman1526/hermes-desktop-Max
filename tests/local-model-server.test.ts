@@ -47,6 +47,7 @@ describe("local model server launcher helpers", () => {
       "/models/Hermes-3.gguf",
       "--ctx-size",
       String(LOCAL_MODEL_SERVER_CONTEXT_SIZE),
+      "--no-warmup",
     ]);
   });
 

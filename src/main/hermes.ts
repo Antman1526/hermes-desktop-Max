@@ -44,6 +44,7 @@ import { HIDDEN_SUBPROCESS_OPTIONS } from "./process-options";
 import { type Attachment, escapeXmlAttr } from "../shared/attachments";
 
 const LOCAL_API_URL = "http://127.0.0.1:8642";
+const DIRECT_LOCAL_MODEL_REQUEST_TIMEOUT_MS = 300_000;
 
 /**
  * Normalise a remote-mode URL the user typed into the connection
@@ -401,6 +402,13 @@ function isLoopbackUrl(raw: string): boolean {
 
 function openAiCompatChatUrl(baseUrl: string): string {
   const root = baseUrl.trim().replace(/\/+$/, "").replace(/\/v1$/i, "");
+  try {
+    const url = new URL(root);
+    if (url.hostname === "localhost") url.hostname = "127.0.0.1";
+    return `${url.toString().replace(/\/+$/, "")}/v1/chat/completions`;
+  } catch {
+    /* Fall back to the original text path below. */
+  }
   return `${root}/v1/chat/completions`;
 }
 
@@ -481,7 +489,7 @@ function sendMessageViaDirectLocalModel(
         "Content-Length": String(bodyBuf.length),
       },
       signal: controller.signal,
-      timeout: 120000,
+      timeout: DIRECT_LOCAL_MODEL_REQUEST_TIMEOUT_MS,
     },
     (res) => {
       let raw = "";

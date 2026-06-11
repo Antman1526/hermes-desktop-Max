@@ -6,6 +6,7 @@ import {
   buildLocalModelEntries,
   discoverLocalModelFiles,
   getLocalModelScanStatus,
+  isLikelyChatLocalModelFile,
   mergeDiscoveredLocalModelEntries,
   rescanLocalModels,
 } from "../src/main/local-model-files";
@@ -58,6 +59,21 @@ describe("local model file discovery", () => {
     writeFileSync(join(root, "GGUF", "broken.gguf"), "version https://git-lfs");
 
     expect(discoverLocalModelFiles([root])).toEqual([]);
+  });
+
+  it("skips embedding-only model files from chat model discovery", () => {
+    const root = join(TEST_DIR, "AI_Models");
+    mkdirSync(join(root, "GGUF"), { recursive: true });
+    const chat = join(root, "GGUF", "Llama-3.2-3B-Instruct-Q4_K_M.gguf");
+    const embedding = join(root, "GGUF", "nomic-embed-text-v1.5.f16.gguf");
+    writeFileSync(chat, Buffer.alloc(1_100_000));
+    writeFileSync(embedding, Buffer.alloc(1_100_000));
+
+    expect(isLikelyChatLocalModelFile(chat)).toBe(true);
+    expect(isLikelyChatLocalModelFile(embedding)).toBe(false);
+    expect(discoverLocalModelFiles([root])).toEqual([
+      expect.objectContaining({ path: chat }),
+    ]);
   });
 
   it("builds stable custom-provider entries that preserve local server base URL", () => {
@@ -139,6 +155,57 @@ describe("local model file discovery", () => {
         model: presentPath,
         available: true,
         rootAvailable: true,
+      }),
+    ]);
+  });
+
+  it("removes previously saved embedding-only local-file entries from chat models", () => {
+    const root = join(TEST_DIR, "AI_Models");
+    const embeddingPath = join(root, "GGUF", "nomic-embed-text-v1.5.f16.gguf");
+
+    const next = mergeDiscoveredLocalModelEntries(
+      [
+        {
+          id: "embedding",
+          name: "Local Nomic Embed",
+          provider: "custom",
+          model: embeddingPath,
+          baseUrl: "http://localhost:8080/v1",
+          source: "local-file" as const,
+          modelPath: embeddingPath,
+          modelFormat: "gguf" as const,
+          modelRoot: root,
+          launchable: true,
+          available: true,
+          rootAvailable: true,
+          createdAt: 1,
+        },
+      ],
+      { discovered: [], roots: [root] },
+    );
+
+    expect(next).toEqual([]);
+  });
+
+  it("keeps manually saved non-local embedding endpoints", () => {
+    const next = mergeDiscoveredLocalModelEntries(
+      [
+        {
+          id: "custom-embedding",
+          name: "Embedding API",
+          provider: "custom",
+          model: "nomic-embed-text",
+          baseUrl: "http://localhost:11434/v1",
+          createdAt: 1,
+        },
+      ],
+      { discovered: [] },
+    );
+
+    expect(next).toEqual([
+      expect.objectContaining({
+        id: "custom-embedding",
+        model: "nomic-embed-text",
       }),
     ]);
   });
