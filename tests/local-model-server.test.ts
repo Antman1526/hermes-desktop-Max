@@ -8,6 +8,7 @@ import {
   isLocalModelServerHealthy,
   isDiscoveredLocalModelPath,
   isLaunchableLocalModel,
+  localModelServerEnv,
   LOCAL_MODEL_SERVER_CONTEXT_SIZE,
   LOCAL_MODEL_SERVER_MISSING_LLAMA_HINT,
   resolveLlamaServerCommand,
@@ -62,6 +63,25 @@ describe("local model server launcher helpers", () => {
       "brew install llama.cpp",
     );
     expect(LOCAL_MODEL_SERVER_MISSING_LLAMA_HINT).toContain("llama-server");
+  });
+
+  it("builds a stable llama-server environment from stripped Electron launches", () => {
+    const env = localModelServerEnv({
+      ELECTRON_RUN_AS_NODE: "1",
+      DYLD_LIBRARY_PATH: "/tmp/bad",
+      LD_LIBRARY_PATH: "/tmp/bad",
+      NODE_OPTIONS: "--inspect",
+    });
+
+    expect(env.PATH).toBeTruthy();
+    if (process.platform !== "win32") {
+      expect(env.HOME).toBeTruthy();
+      expect(env.TMPDIR).toBeTruthy();
+    }
+    expect(env.ELECTRON_RUN_AS_NODE).toBeUndefined();
+    expect(env.DYLD_LIBRARY_PATH).toBeUndefined();
+    expect(env.LD_LIBRARY_PATH).toBeUndefined();
+    expect(env.NODE_OPTIONS).toBeUndefined();
   });
 
   it("reports local model runtime status for a missing llama-server", () => {
@@ -131,9 +151,21 @@ describe("local model server launcher helpers", () => {
       startPort: 8080,
       endPort: 8083,
       isPortAvailable: async (port) => port === 8082,
+      isPortReachable: async () => false,
     });
 
     expect(selected).toBe(8082);
+  });
+
+  it("skips a reachable service even when bind probing says the port is available", async () => {
+    const selected = await findAvailableLocalModelPort({
+      startPort: 8080,
+      endPort: 8082,
+      isPortAvailable: async () => true,
+      isPortReachable: async (port) => port === 8080,
+    });
+
+    expect(selected).toBe(8081);
   });
 
   it("does not treat an arbitrary 404 service as a healthy local model server", async () => {

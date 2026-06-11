@@ -386,6 +386,162 @@ export function contextFolderSystemMessage(
   };
 }
 
+function isLoopbackUrl(raw: string): boolean {
+  try {
+    const url = new URL(raw);
+    return (
+      url.hostname === "localhost" ||
+      url.hostname === "127.0.0.1" ||
+      url.hostname === "::1"
+    );
+  } catch {
+    return false;
+  }
+}
+
+function openAiCompatChatUrl(baseUrl: string): string {
+  const root = baseUrl.trim().replace(/\/+$/, "").replace(/\/v1$/i, "");
+  return `${root}/v1/chat/completions`;
+}
+
+function shouldUseDirectLocalModelEndpoint(mc: {
+  provider: string;
+  model: string;
+  baseUrl: string;
+}): boolean {
+  return (
+    OPENAI_COMPAT_PROVIDERS.has(mc.provider) &&
+    Boolean(mc.model) &&
+    Boolean(mc.baseUrl) &&
+    isLoopbackUrl(mc.baseUrl)
+  );
+}
+
+function buildOpenAiMessages(
+  message: string,
+  history?: Array<{ role: string; content: string }>,
+  attachments?: Attachment[],
+  contextFolder?: string,
+): Array<{ role: string; content: ChatContent }> {
+  const messages: Array<{ role: string; content: ChatContent }> = [];
+  if (history && history.length > 0) {
+    for (const msg of history) {
+      messages.push({
+        role: msg.role === "agent" ? "assistant" : msg.role,
+        content: msg.content,
+      });
+    }
+  }
+  messages.push({
+    role: "user",
+    content: buildUserContent(message, attachments),
+  });
+
+  const ctxSystem = contextFolderSystemMessage(contextFolder);
+  if (ctxSystem) messages.unshift(ctxSystem);
+  return messages;
+}
+
+function sendMessageViaDirectLocalModel(
+  message: string,
+  cb: ChatCallbacks,
+  profile?: string,
+  _resumeSessionId?: string,
+  history?: Array<{ role: string; content: string }>,
+  attachments?: Attachment[],
+  contextFolder?: string,
+): ChatHandle {
+  const mc = getModelConfig(profile);
+  const controller = new AbortController();
+  const sessionId =
+    _resumeSessionId || `desk-direct-${Date.now()}-${randomUUID()}`;
+  const body = JSON.stringify({
+    model: mc.model,
+    messages: buildOpenAiMessages(message, history, attachments, contextFolder),
+    stream: false,
+  });
+  const bodyBuf = Buffer.from(body, "utf-8");
+  const url = openAiCompatChatUrl(mc.baseUrl);
+  const requester = url.startsWith("https") ? https.request : http.request;
+  let finished = false;
+
+  function finish(error?: string): void {
+    if (finished) return;
+    finished = true;
+    if (error) cb.onError(error);
+    else cb.onDone(sessionId);
+  }
+
+  const req = requester(
+    url,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Content-Length": String(bodyBuf.length),
+      },
+      signal: controller.signal,
+      timeout: 120000,
+    },
+    (res) => {
+      let raw = "";
+      res.setEncoding("utf-8");
+      res.on("data", (chunk) => {
+        raw += chunk;
+      });
+      res.on("end", () => {
+        try {
+          const parsed = JSON.parse(raw);
+          if (res.statusCode !== 200 || parsed.error) {
+            finish(parsed.error?.message || `API error ${res.statusCode}`);
+            return;
+          }
+          const content = parsed.choices?.[0]?.message?.content || "";
+          if (parsed.usage && cb.onUsage) {
+            cb.onUsage({
+              promptTokens: parsed.usage.prompt_tokens || 0,
+              completionTokens: parsed.usage.completion_tokens || 0,
+              totalTokens: parsed.usage.total_tokens || 0,
+              cost: parsed.usage.cost,
+              rateLimitRemaining: parsed.usage.rate_limit_remaining,
+              rateLimitReset: parsed.usage.rate_limit_reset,
+            });
+          }
+          if (!content) {
+            finish("No response received from the local model.");
+            return;
+          }
+          cb.onChunk(content);
+          finish();
+        } catch {
+          finish(
+            `Local model returned an invalid response: ${raw.slice(0, 200)}`,
+          );
+        }
+      });
+      res.on("error", (err) => {
+        if (err.message === "aborted" || err.name === "AbortError") return;
+        finish(`Local model stream error: ${err.message}`);
+      });
+    },
+  );
+
+  req.on("error", (err) => {
+    if (err.name === "AbortError") return;
+    finish(`Local model request failed: ${err.message}`);
+  });
+  req.on("timeout", () => {
+    req.destroy();
+    finish("Local model request timed out.");
+  });
+  req.write(bodyBuf);
+  req.end();
+
+  return {
+    abort: () => controller.abort(),
+  };
+}
+
 function sendMessageViaApi(
   message: string,
   cb: ChatCallbacks,
@@ -1021,6 +1177,19 @@ export async function sendMessage(
   contextFolder?: string,
 ): Promise<ChatHandle> {
   ensureInitialized();
+
+  const mc = getModelConfig(profile);
+  if (!isRemoteMode() && shouldUseDirectLocalModelEndpoint(mc)) {
+    return sendMessageViaDirectLocalModel(
+      message,
+      cb,
+      profile,
+      resumeSessionId,
+      history,
+      attachments,
+      contextFolder,
+    );
+  }
 
   // Remote mode: always use API, no CLI fallback
   if (isRemoteMode()) {

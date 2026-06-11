@@ -1,34 +1,43 @@
 import { EventEmitter } from "events";
 import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 
-const { spawned, spawnOptions, TEST_HOME, healthStatuses, apiRequests } =
-  vi.hoisted(() => {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const path = require("path");
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const os = require("os");
-    return {
-      spawned: [] as Array<
-        EventEmitter & {
-          stdout: EventEmitter;
-          stderr: EventEmitter;
-          killed: boolean;
-          kill: ReturnType<typeof vi.fn>;
-          unref: ReturnType<typeof vi.fn>;
-        }
-      >,
-      spawnOptions: [] as Array<Record<string, unknown>>,
-      TEST_HOME: path.join(
-        os.tmpdir(),
-        `hermes-cli-session-test-${Date.now()}`,
-      ),
-      healthStatuses: [] as number[],
-      apiRequests: [] as Array<{
-        body: string;
-        headers: Record<string, string>;
-      }>,
-    };
-  });
+const {
+  spawned,
+  spawnOptions,
+  TEST_HOME,
+  healthStatuses,
+  apiRequests,
+  modelConfig,
+} = vi.hoisted(() => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const path = require("path");
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const os = require("os");
+  return {
+    spawned: [] as Array<
+      EventEmitter & {
+        stdout: EventEmitter;
+        stderr: EventEmitter;
+        killed: boolean;
+        kill: ReturnType<typeof vi.fn>;
+        unref: ReturnType<typeof vi.fn>;
+      }
+    >,
+    spawnOptions: [] as Array<Record<string, unknown>>,
+    TEST_HOME: path.join(os.tmpdir(), `hermes-cli-session-test-${Date.now()}`),
+    healthStatuses: [] as number[],
+    apiRequests: [] as Array<{
+      body: string;
+      headers: Record<string, string>;
+      url: string;
+    }>,
+    modelConfig: {
+      provider: "openrouter",
+      model: "test-model",
+      baseUrl: "",
+    },
+  };
+});
 
 vi.mock("http", () => ({
   default: {
@@ -39,6 +48,7 @@ vi.mock("http", () => ({
         statusCode: number;
         headers?: Record<string, string>;
         resume?: () => void;
+        setEncoding?: (encoding: BufferEncoding) => void;
         on?: (event: string, handler: (...args: unknown[]) => void) => void;
       }) => void,
     ) => {
@@ -61,15 +71,34 @@ vi.mock("http", () => ({
             apiRequests.push({
               body,
               headers: (_options.headers as Record<string, string>) || {},
+              url: _url,
             });
             const res = new EventEmitter() as EventEmitter & {
               statusCode: number;
               headers: Record<string, string>;
+              setEncoding: (encoding: BufferEncoding) => void;
             };
             res.statusCode = 200;
             res.headers = { "x-hermes-session-id": "desk-cold-gateway" };
+            res.setEncoding = () => {};
             cb?.(res);
             queueMicrotask(() => {
+              if (JSON.parse(body).stream === false) {
+                res.emit(
+                  "data",
+                  Buffer.from(
+                    JSON.stringify({
+                      choices: [
+                        {
+                          message: { role: "assistant", content: "Hi direct" },
+                        },
+                      ],
+                    }),
+                  ),
+                );
+                res.emit("end");
+                return;
+              }
               res.emit(
                 "data",
                 Buffer.from(
@@ -155,7 +184,7 @@ vi.mock("../src/main/installer", () => ({
 }));
 
 vi.mock("../src/main/config", () => ({
-  getModelConfig: () => ({ model: "test-model", provider: "openrouter" }),
+  getModelConfig: () => modelConfig,
   readEnv: () => ({}),
   setEnvValue: () => {},
   getApiServerKey: () => "",
@@ -195,6 +224,9 @@ describe("CLI fallback session id propagation", () => {
   beforeEach(() => {
     healthStatuses.length = 0;
     apiRequests.length = 0;
+    modelConfig.provider = "openrouter";
+    modelConfig.model = "test-model";
+    modelConfig.baseUrl = "";
   });
 
   afterEach(() => {
@@ -291,6 +323,35 @@ describe("CLI fallback session id propagation", () => {
     expect(JSON.parse(apiRequests[0].body)).toMatchObject({
       messages: [{ role: "user", content: "hi" }],
       stream: true,
+    });
+  });
+
+  it("routes loopback OpenAI-compatible models directly instead of spawning the agent gateway", async () => {
+    modelConfig.provider = "custom";
+    modelConfig.model = "local-test-model";
+    modelConfig.baseUrl = "http://127.0.0.1:8081/v1";
+
+    const chunks: string[] = [];
+    await expect(
+      new Promise<string | undefined>((resolve, reject) => {
+        sendMessage("hi local", {
+          onChunk: (chunk) => chunks.push(chunk),
+          onDone: resolve,
+          onError: reject,
+        }).catch(reject);
+      }),
+    ).resolves.toMatch(/^desk-direct-/);
+
+    expect(chunks.join("")).toBe("Hi direct");
+    expect(spawned).toHaveLength(0);
+    expect(apiRequests).toHaveLength(1);
+    expect(apiRequests[0].url).toBe(
+      "http://127.0.0.1:8081/v1/chat/completions",
+    );
+    expect(JSON.parse(apiRequests[0].body)).toMatchObject({
+      model: "local-test-model",
+      messages: [{ role: "user", content: "hi local" }],
+      stream: false,
     });
   });
 

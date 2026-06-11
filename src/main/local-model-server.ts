@@ -9,6 +9,7 @@ import {
 } from "fs";
 import http from "http";
 import net from "net";
+import { homedir, tmpdir } from "os";
 import { extname, join } from "path";
 import { HERMES_HOME, getEnhancedPath } from "./installer";
 import {
@@ -20,7 +21,7 @@ import { pidIsAlive, safeWriteFile } from "./utils";
 
 export const LOCAL_MODEL_SERVER_PORT = 8080;
 export const LOCAL_MODEL_SERVER_BASE_URL = `http://localhost:${LOCAL_MODEL_SERVER_PORT}/v1`;
-export const LOCAL_MODEL_SERVER_CONTEXT_SIZE = 65_536;
+export const LOCAL_MODEL_SERVER_CONTEXT_SIZE = 16_384;
 export const LOCAL_MODEL_SERVER_MISSING_LLAMA_HINT =
   "llama-server was not found. Install llama.cpp with `brew install llama.cpp`, or put a llama-server binary on PATH.";
 
@@ -51,8 +52,15 @@ function logLocalModelServer(message: string): void {
   }
 }
 
-function localModelServerEnv(): NodeJS.ProcessEnv {
-  const env: NodeJS.ProcessEnv = { ...process.env, PATH: getEnhancedPath() };
+export function localModelServerEnv(
+  sourceEnv: NodeJS.ProcessEnv = process.env,
+): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = {
+    ...sourceEnv,
+    PATH: sourceEnv.PATH || getEnhancedPath(),
+  };
+  if (!env.HOME && process.platform !== "win32") env.HOME = homedir();
+  if (!env.TMPDIR && process.platform !== "win32") env.TMPDIR = tmpdir();
   for (const key of Object.keys(env)) {
     if (
       key.startsWith("ELECTRON_") ||
@@ -209,17 +217,34 @@ function isPortAvailable(port: number): Promise<boolean> {
   });
 }
 
+function isPortReachable(port: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const socket = net.createConnection({ host: "127.0.0.1", port });
+    socket.once("connect", () => {
+      socket.destroy();
+      resolve(true);
+    });
+    socket.once("error", () => resolve(false));
+    socket.setTimeout(500, () => {
+      socket.destroy();
+      resolve(false);
+    });
+  });
+}
+
 export async function findAvailableLocalModelPort({
   startPort = LOCAL_MODEL_SERVER_PORT,
   endPort = LOCAL_MODEL_SERVER_MAX_PORT,
   isPortAvailable: checkPort = isPortAvailable,
+  isPortReachable: checkReachable = isPortReachable,
 }: {
   startPort?: number;
   endPort?: number;
   isPortAvailable?: (port: number) => Promise<boolean>;
+  isPortReachable?: (port: number) => Promise<boolean>;
 } = {}): Promise<number | null> {
   for (let port = startPort; port <= endPort; port++) {
-    if (await checkPort(port)) return port;
+    if ((await checkPort(port)) && !(await checkReachable(port))) return port;
   }
   return null;
 }
