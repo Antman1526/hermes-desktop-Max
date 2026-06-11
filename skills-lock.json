@@ -20,6 +20,11 @@
       "source": "nextlevelbuilder/ui-ux-pro-max-skill",
       "sourceType": "github",
       "computedHash": "0a413bf988d06481f69bb81df2070741c3ba12dd9f1be2706d57f259c905992d"
+    },
+    "skillopt": {
+      "source": "microsoft/SkillOpt",
+      "sourceType": "github",
+      "computedHash": "eac37d30987a6927d97d2318faae793e4c6741d7b9473dfa5a53aad753d87203"
     }
   }
 }

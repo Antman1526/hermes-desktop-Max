@@ -1,5 +1,12 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Search, X, Download, Trash, Refresh } from "../../assets/icons";
+import {
+  Search,
+  X,
+  Download,
+  Trash,
+  Refresh,
+  ExternalLink,
+} from "../../assets/icons";
 import { AgentMarkdown } from "../../components/AgentMarkdown";
 import { useI18n } from "../../components/useI18n";
 
@@ -16,6 +23,11 @@ interface BundledSkill {
   category: string;
   source: string;
   installed: boolean;
+  homepage?: string;
+  repository?: string;
+  license?: string;
+  ref?: string;
+  commit?: string;
 }
 
 interface SkillsProps {
@@ -104,6 +116,11 @@ function Skills({ profile }: SkillsProps): React.JSX.Element {
     }
   }
 
+  function openSkillLink(url: string | undefined): void {
+    if (!url) return;
+    void window.hermesAPI.openExternal(url);
+  }
+
   const installedNames = new Set(
     installedSkills.map((s) => s.name.toLowerCase()),
   );
@@ -128,7 +145,8 @@ function Skills({ profile }: SkillsProps): React.JSX.Element {
       matches =
         s.name.toLowerCase().includes(q) ||
         s.description.toLowerCase().includes(q) ||
-        s.category.toLowerCase().includes(q);
+        s.category.toLowerCase().includes(q) ||
+        s.source.toLowerCase().includes(q);
     }
     if (categoryFilter) {
       matches = matches && s.category === categoryFilter;
@@ -350,7 +368,37 @@ function Skills({ profile }: SkillsProps): React.JSX.Element {
                     {skill.description}
                   </div>
                 )}
+                <div className="skills-card-source">
+                  <span>{skill.source}</span>
+                  {skill.license && <span>{skill.license}</span>}
+                </div>
                 <div className="skills-card-footer">
+                  <div className="skills-card-links">
+                    {skill.homepage && (
+                      <button
+                        className="skills-card-link"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openSkillLink(skill.homepage);
+                        }}
+                      >
+                        <ExternalLink size={12} />
+                        Docs
+                      </button>
+                    )}
+                    {skill.repository && (
+                      <button
+                        className="skills-card-link"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openSkillLink(skill.repository);
+                        }}
+                      >
+                        <ExternalLink size={12} />
+                        Repo
+                      </button>
+                    )}
+                  </div>
                   {isInstalled ? (
                     <span className="skills-card-installed-badge">
                       {t("skills.installedBadge")}

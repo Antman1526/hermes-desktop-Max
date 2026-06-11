@@ -25,6 +25,10 @@ Supported platform settings include Telegram, Discord, Slack, WhatsApp, Signal, 
 
 Built-in memory editing is file/config based. External memory providers include Honcho, Hindsight, Mem0, RetainDB, Supermemory, OpenViking, ByteRover, and OpenChronicle. Provider discovery and configuration are exposed through `discover-memory-providers` and `configure-memory-provider`.
 
+## Curated Skill Sources
+
+Hermes Desktop Max bundles curated external skills under `resources/curated-skills` so users can install selected high-value skills without relying on the Hermes CLI resolver. Sources include Agent Skills, Taste Skill, and Microsoft SkillOpt. The SkillOpt curated skill installs as `skill-optimization/skillopt` and guides validation-gated improvement of Hermes skills using SkillOpt/SkillOpt-Sleep patterns.
+
 ## Paperclip
 
 Paperclip is managed as a sidecar at `http://127.0.0.1:3100` by default.

@@ -4383,10 +4383,61 @@ body {
   -webkit-box-orient: vertical;
 }
 
+.skills-card-source {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-height: 20px;
+  align-items: center;
+}
+
+.skills-card-source span {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  color: var(--text-muted);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 2px 7px;
+}
+
 .skills-card-footer {
   margin-top: 4px;
   display: flex;
-  justify-content: flex-end;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.skills-card-links {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 24px;
+}
+
+.skills-card-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 3px 4px;
+  border-radius: var(--radius-sm);
+}
+
+.skills-card-link:hover {
+  color: var(--accent-text);
+  background: var(--accent-subtle);
 }
 
 .skills-card-installed-badge {

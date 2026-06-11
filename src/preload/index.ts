@@ -532,6 +532,11 @@ const hermesAPI = {
       category: string;
       source: string;
       installed: boolean;
+      homepage?: string;
+      repository?: string;
+      license?: string;
+      ref?: string;
+      commit?: string;
     }>
   > => ipcRenderer.invoke("list-bundled-skills"),
   getSkillContent: (skillPath: string): Promise<string> =>
@@ -1059,8 +1064,7 @@ const hermesAPI = {
     serverUrl: string;
     autoStart: boolean;
     telemetryDisabled: boolean;
-  }> =>
-    ipcRenderer.invoke("set-paperclip-config", config),
+  }> => ipcRenderer.invoke("set-paperclip-config", config),
 
   paperclipStatus: (): Promise<{
     serverUrl: string;

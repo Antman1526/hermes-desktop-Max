@@ -312,6 +312,11 @@ const hermesAPI = {
       category: string;
       source: string;
       installed: boolean;
+      homepage?: string;
+      repository?: string;
+      license?: string;
+      ref?: string;
+      commit?: string;
     }>
   > => ipcRenderer.invoke("list-bundled-skills"),
   getSkillContent: (skillPath: string): Promise<string> =>

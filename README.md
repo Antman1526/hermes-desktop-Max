@@ -29,6 +29,8 @@ Hermes Desktop Max gives a user a single desktop interface for:
   by Hermes Agent in SQLite.
 - Editing memory files, user profile memory, SOUL.md, toolsets, skills, and
   schedules.
+- Installing curated external skills, including Microsoft SkillOpt guidance for
+  validation-gated improvement of Hermes skills.
 - Managing sidecars including Paperclip and Hermes Office/Claw3d.
 - Running backups, imports, doctor checks, updates, logs, and diagnostics from
   the desktop UI.
@@ -102,16 +104,16 @@ In one sentence, say what 7 + 5 equals and include the word HERMES.
 
 All models answered through the app path:
 
-| Model | Result | Observed answer |
-| --- | --- | --- |
-| `DeepSeek-R1-Distill-Qwen-14B-Q4_K_M.gguf` | Pass | Hermes is the messenger who brings 7 + 5 to 12. |
-| `gemma-4-12b-it-Q4_K_M.gguf` | Pass | Seven plus five equals twelve, a calculation even Hermes would know. |
-| `gemma-4-E4B-it-Q4_K_M.gguf` | Pass | Seven plus five equals twelve, a number as swift as HERMES. |
-| `Llama-3.2-3B-Instruct-Q4_K_M.gguf` | Pass | As the messenger of the gods in Greek mythology, even the swift and wise HERMES couldn't help but calculate that 7 + 5 equals 12. |
-| `Phi-4-mini-instruct-Q4_K_M.gguf` | Pass | HERMES says that 7 plus 5 equals 12. |
-| `Qwen2.5-14B-Instruct-Q4_K_M.gguf` | Pass | HERMES would tell you that 7 + 5 equals 12. |
-| `Qwen3.5-4B-Q4_K_M.gguf` | Pass | 7 plus 5 equals 12, a fact that HERMES would certainly know. |
-| `Qwen3.5-9B-Q4_K_M.gguf` | Pass | 7 + 5 equals 12, and HERMES is a luxury fashion brand. |
+| Model                                      | Result | Observed answer                                                                                                                   |
+| ------------------------------------------ | ------ | --------------------------------------------------------------------------------------------------------------------------------- |
+| `DeepSeek-R1-Distill-Qwen-14B-Q4_K_M.gguf` | Pass   | Hermes is the messenger who brings 7 + 5 to 12.                                                                                   |
+| `gemma-4-12b-it-Q4_K_M.gguf`               | Pass   | Seven plus five equals twelve, a calculation even Hermes would know.                                                              |
+| `gemma-4-E4B-it-Q4_K_M.gguf`               | Pass   | Seven plus five equals twelve, a number as swift as HERMES.                                                                       |
+| `Llama-3.2-3B-Instruct-Q4_K_M.gguf`        | Pass   | As the messenger of the gods in Greek mythology, even the swift and wise HERMES couldn't help but calculate that 7 + 5 equals 12. |
+| `Phi-4-mini-instruct-Q4_K_M.gguf`          | Pass   | HERMES says that 7 plus 5 equals 12.                                                                                              |
+| `Qwen2.5-14B-Instruct-Q4_K_M.gguf`         | Pass   | HERMES would tell you that 7 + 5 equals 12.                                                                                       |
+| `Qwen3.5-4B-Q4_K_M.gguf`                   | Pass   | 7 plus 5 equals 12, a fact that HERMES would certainly know.                                                                      |
+| `Qwen3.5-9B-Q4_K_M.gguf`                   | Pass   | 7 + 5 equals 12, and HERMES is a luxury fashion brand.                                                                            |
 
 ## Architecture
 
@@ -143,16 +145,16 @@ Key layers:
 
 ## Important Runtime Paths
 
-| Path | Purpose |
-| --- | --- |
-| `~/.hermes/config.yaml` | Active profile model/provider/tool configuration. |
-| `~/.hermes/.env` | Active profile environment variables and provider keys. |
-| `~/.hermes/desktop.json` | Desktop-only preferences: local model roots, connection mode, Paperclip, SSH. |
-| `~/.hermes/models.json` | Saved model library, including discovered local-file entries. |
-| `~/.hermes/state.db` | Hermes Agent SQLite session/message database. |
-| `~/.hermes/profiles/<name>` | Isolated named profile home. |
-| `~/.hermes/local-model-server.log` | Desktop local model launcher log. |
-| `~/.hermes/local-model-server-llama.log` | Raw `llama-server` log. |
+| Path                                     | Purpose                                                                       |
+| ---------------------------------------- | ----------------------------------------------------------------------------- |
+| `~/.hermes/config.yaml`                  | Active profile model/provider/tool configuration.                             |
+| `~/.hermes/.env`                         | Active profile environment variables and provider keys.                       |
+| `~/.hermes/desktop.json`                 | Desktop-only preferences: local model roots, connection mode, Paperclip, SSH. |
+| `~/.hermes/models.json`                  | Saved model library, including discovered local-file entries.                 |
+| `~/.hermes/state.db`                     | Hermes Agent SQLite session/message database.                                 |
+| `~/.hermes/profiles/<name>`              | Isolated named profile home.                                                  |
+| `~/.hermes/local-model-server.log`       | Desktop local model launcher log.                                             |
+| `~/.hermes/local-model-server-llama.log` | Raw `llama-server` log.                                                       |
 
 ## Technology Stack
 
@@ -176,6 +178,10 @@ Key layers:
 - highlight.js `11.11.1`
 - react-syntax-highlighter `16.1.1`
 - posthog-js `1.376.0`
+
+Curated skill sources bundled with the app include Agent Skills, Taste Skill,
+and Microsoft SkillOpt. SkillOpt is exposed in the Skills Browse tab as
+`skill-optimization/skillopt` with docs and repository links.
 
 For the exhaustive technology audit, see
 [`docs/project-reconstruction/TECHNOLOGY_AUDIT.md`](docs/project-reconstruction/TECHNOLOGY_AUDIT.md).
@@ -217,19 +223,19 @@ npm run dev:fresh
 
 ## Commands
 
-| Command | Description |
-| --- | --- |
-| `npm run dev` | Start Electron/Vite development runtime. |
-| `npm run dev:fresh` | Start development runtime with a temporary `HERMES_HOME`. |
-| `npm run start` | Preview built Electron app. |
-| `npm run typecheck` | Run node/preload and renderer TypeScript checks. |
-| `npm test` | Run Vitest suite. |
-| `npm run lint` | Run ESLint cache. |
-| `npm run build` | Typecheck and build main/preload/renderer bundles. |
-| `npm run build:mac` | Build unsigned local ARM64 macOS DMG. |
-| `npm run build:win` | Build Windows NSIS and portable artifacts. |
-| `npm run build:linux` | Build Linux AppImage, Snap, Deb, RPM. |
-| `npm run build:rpm` | Build Linux RPM only. |
+| Command               | Description                                               |
+| --------------------- | --------------------------------------------------------- |
+| `npm run dev`         | Start Electron/Vite development runtime.                  |
+| `npm run dev:fresh`   | Start development runtime with a temporary `HERMES_HOME`. |
+| `npm run start`       | Preview built Electron app.                               |
+| `npm run typecheck`   | Run node/preload and renderer TypeScript checks.          |
+| `npm test`            | Run Vitest suite.                                         |
+| `npm run lint`        | Run ESLint cache.                                         |
+| `npm run build`       | Typecheck and build main/preload/renderer bundles.        |
+| `npm run build:mac`   | Build unsigned local ARM64 macOS DMG.                     |
+| `npm run build:win`   | Build Windows NSIS and portable artifacts.                |
+| `npm run build:linux` | Build Linux AppImage, Snap, Deb, RPM.                     |
+| `npm run build:rpm`   | Build Linux RPM only.                                     |
 
 ## macOS DMG Build
 

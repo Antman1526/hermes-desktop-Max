@@ -39,6 +39,14 @@ describe("curated external skills", () => {
           category: "taste-skill",
           source: "Leonxlnx/taste-skill@3c7017d",
         }),
+        expect.objectContaining({
+          name: "skillopt",
+          category: "skill-optimization",
+          source: "microsoft/SkillOpt@c1ac570",
+          homepage: "https://microsoft.github.io/SkillOpt/",
+          repository: "https://github.com/microsoft/SkillOpt",
+          license: "MIT",
+        }),
       ]),
     );
   });
@@ -63,5 +71,28 @@ describe("curated external skills", () => {
     );
     expect(installed).toContain("name: design-taste-frontend");
     expect(installed).toContain("Anti-Slop Frontend Skill");
+  });
+
+  it("installs the curated SkillOpt skill into the selected profile", async () => {
+    const { installSkill } = await loadSkillsModule();
+
+    const result = installSkill("skillopt", "research");
+
+    expect(result).toEqual({ success: true });
+    const installed = readFileSync(
+      join(
+        testHome,
+        "profiles",
+        "research",
+        "skills",
+        "skill-optimization",
+        "skillopt",
+        "SKILL.md",
+      ),
+      "utf-8",
+    );
+    expect(installed).toContain("name: skillopt");
+    expect(installed).toContain("SkillOpt for Hermes Skills");
+    expect(installed).toContain("validation-gated");
   });
 });

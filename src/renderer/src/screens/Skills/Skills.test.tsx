@@ -141,4 +141,65 @@ describe("Skills.tsx — Install button (issue #310 diagnosis)", () => {
       expect(banner!.textContent).toContain("Did you mean");
     });
   });
+
+  it("renders curated source metadata and opens docs links from Browse cards", async () => {
+    const installSkill = vi.fn().mockResolvedValue({ success: true });
+    const listInstalledSkills = vi.fn().mockResolvedValue([]);
+    const listBundledSkills = vi.fn().mockResolvedValue([
+      {
+        name: "skillopt",
+        description: "validation-gated skill optimization",
+        category: "skill-optimization",
+        source: "microsoft/SkillOpt@c1ac570",
+        installed: false,
+        homepage: "https://microsoft.github.io/SkillOpt/",
+        repository: "https://github.com/microsoft/SkillOpt",
+        license: "MIT",
+      },
+    ]);
+    const getSkillContent = vi.fn().mockResolvedValue("");
+    const openExternal = vi.fn().mockResolvedValue(true);
+
+    Object.defineProperty(window, "hermesAPI", {
+      configurable: true,
+      value: {
+        installSkill,
+        listInstalledSkills,
+        listBundledSkills,
+        getSkillContent,
+        openExternal,
+      },
+    });
+
+    const view = render(<Skills />);
+    await waitFor(() => {
+      expect(listBundledSkills).toHaveBeenCalled();
+      expect(listInstalledSkills).toHaveBeenCalled();
+    });
+
+    const tabs = view.container.querySelectorAll(".skills-tab");
+    await act(async () => {
+      fireEvent.click(tabs[1] as HTMLButtonElement);
+    });
+
+    await waitFor(() => {
+      expect(view.container.textContent).toContain(
+        "microsoft/SkillOpt@c1ac570",
+      );
+      expect(view.container.textContent).toContain("MIT");
+    });
+
+    const docsButton = Array.from(
+      view.container.querySelectorAll(".skills-card-link"),
+    ).find((button) => button.textContent?.includes("Docs"));
+    expect(docsButton).toBeTruthy();
+
+    await act(async () => {
+      fireEvent.click(docsButton!);
+    });
+
+    expect(openExternal).toHaveBeenCalledWith(
+      "https://microsoft.github.io/SkillOpt/",
+    );
+  });
 });

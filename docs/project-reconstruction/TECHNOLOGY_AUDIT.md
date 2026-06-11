@@ -97,6 +97,7 @@ Generated from repository state on 2026-06-11. This audit identifies technologie
 - **Paperclip AI** - sidecar control-plane server launched through `npx paperclipai run`.
 - **OpenChronicle** - memory provider through Streamable HTTP MCP endpoint.
 - **Honcho, Hindsight, Mem0, RetainDB, Supermemory, OpenViking, ByteRover** - optional memory providers.
+- **Microsoft SkillOpt** - bundled as a curated installable Hermes skill (`skill-optimization/skillopt`) with repository/docs metadata in the Skills browser. It provides validation-gated skill optimization guidance rather than vendoring the full Python package into Electron.
 - **Telegram, Discord, Slack, WhatsApp, Signal, Matrix, Mattermost, Email, Twilio/Vonage SMS, BlueBubbles, DingTalk, Feishu/Lark, WeCom, WeChat/iLink, Webhooks, Home Assistant** - messaging gateways configured by the desktop.
 - **Exa, Parallel, Tavily, Firecrawl, Browserbase, FAL.ai, Weights & Biases, Tinker** - tool integrations exposed by Hermes configuration.
 

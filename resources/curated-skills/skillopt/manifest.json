@@ -1,0 +1,12 @@
+{
+  "name": "skillopt",
+  "displayName": "SkillOpt",
+  "description": "Microsoft SkillOpt workflow guidance for validation-gated improvement of Hermes skills and long-term agent memory.",
+  "homepage": "https://microsoft.github.io/SkillOpt/",
+  "repository": "https://github.com/microsoft/SkillOpt",
+  "license": "MIT",
+  "ref": "main",
+  "commit": "c1ac570d944ee7f83fc7c4273abfcb4bfdfea392",
+  "category": "skill-optimization",
+  "sourceLabel": "microsoft/SkillOpt@c1ac570"
+}

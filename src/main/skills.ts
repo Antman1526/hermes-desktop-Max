@@ -32,6 +32,11 @@ export interface SkillSearchResult {
   category: string;
   source: string;
   installed: boolean;
+  homepage?: string;
+  repository?: string;
+  license?: string;
+  ref?: string;
+  commit?: string;
 }
 
 interface CuratedSkillManifest {
@@ -106,7 +111,10 @@ function curatedSkillsRootCandidates(): string[] {
 }
 
 function curatedSkillsRoot(): string {
-  return curatedSkillsRootCandidates().find((candidate) => existsSync(candidate)) ?? "";
+  return (
+    curatedSkillsRootCandidates().find((candidate) => existsSync(candidate)) ??
+    ""
+  );
 }
 
 function readJsonFile<T>(file: string): T | null {
@@ -393,6 +401,11 @@ export function listBundledSkills(): SkillSearchResult[] {
       category: skill.manifest.category,
       source: skill.manifest.sourceLabel,
       installed: false,
+      homepage: skill.manifest.homepage,
+      repository: skill.manifest.repository,
+      license: skill.manifest.license,
+      ref: skill.manifest.ref,
+      commit: skill.manifest.commit,
     });
   }
 
