@@ -105,6 +105,22 @@ export function isDiscoveredLocalModelPath(
   );
 }
 
+export function validateLocalModelLaunchPath(
+  modelPath: string,
+  files: Pick<LocalModelFile, "path" | "format">[] = discoverLocalModelFiles(),
+): string | null {
+  if (!isLaunchableLocalModel(modelPath)) {
+    return "Only GGUF model files can be launched with llama-server.";
+  }
+  if (!isDiscoveredLocalModelPath(modelPath, files)) {
+    return `Model file is outside configured local model roots: ${modelPath}`;
+  }
+  if (!existsSync(modelPath)) {
+    return `Model file does not exist: ${modelPath}`;
+  }
+  return null;
+}
+
 export function buildLlamaServerArgs(
   modelPath: string,
   port = LOCAL_MODEL_SERVER_PORT,
@@ -333,18 +349,12 @@ export async function startLocalModelServer(
   modelPath: string,
 ): Promise<LocalModelServerStatus> {
   logLocalModelServer(`start requested model=${modelPath}`);
-  if (!isLaunchableLocalModel(modelPath)) {
-    logLocalModelServer("rejected: non-GGUF model");
+  const launchError = validateLocalModelLaunchPath(modelPath);
+  if (launchError) {
+    logLocalModelServer(`rejected: ${launchError}`);
     return {
       ...(await getLocalModelServerStatus()),
-      error: "Only GGUF model files can be launched with llama-server.",
-    };
-  }
-  if (!existsSync(modelPath)) {
-    logLocalModelServer("rejected: model file missing");
-    return {
-      ...(await getLocalModelServerStatus()),
-      error: `Model file does not exist: ${modelPath}`,
+      error: launchError,
     };
   }
 

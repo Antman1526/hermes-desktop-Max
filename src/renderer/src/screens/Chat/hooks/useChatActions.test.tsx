@@ -1,4 +1,5 @@
 import { act, renderHook } from "@testing-library/react";
+import type { RenderHookResult } from "@testing-library/react";
 import type { Dispatch, SetStateAction } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useChatActions } from "./useChatActions";
@@ -13,7 +14,15 @@ function installHermesAPI(
   });
 }
 
-function createHarness(initialMessages: ChatMessage[] = []) {
+function createHarness(initialMessages: ChatMessage[] = []): {
+  result: RenderHookResult<
+    ReturnType<typeof useChatActions>,
+    unknown
+  >["result"];
+  setMessages: Dispatch<SetStateAction<ChatMessage[]>>;
+  setIsLoading: ReturnType<typeof vi.fn>;
+  getMessages: () => ChatMessage[];
+} {
   let messagesState = initialMessages;
   const setMessages = vi.fn((update: SetStateAction<ChatMessage[]>) => {
     messagesState =

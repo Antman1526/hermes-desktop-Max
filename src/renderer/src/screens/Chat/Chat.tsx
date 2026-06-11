@@ -360,6 +360,7 @@ function Chat({
           currentBaseUrl={modelConfig.currentBaseUrl}
           modelGroups={modelConfig.modelGroups}
           displayModel={modelConfig.displayModel}
+          localModelReadiness={modelConfig.localModelReadiness}
           onOpen={modelConfig.reload}
           onSelectModel={modelConfig.selectModel}
         />

@@ -1,11 +1,13 @@
-import { mkdtempSync, readFileSync, rmSync } from "fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 let testHome = "";
 
-async function loadSkillsModule() {
+async function loadSkillsModule(): Promise<
+  typeof import("../src/main/skills")
+> {
   testHome = mkdtempSync(join(tmpdir(), "hermes-curated-skills-"));
   vi.resetModules();
   vi.stubEnv("HERMES_HOME", testHome);
@@ -133,5 +135,46 @@ describe("curated external skills", () => {
     expect(result.success).toBe(false);
     expect(result.error).toContain("mandatory sleep-cycle workflow");
     expect(result.error).toContain("cannot be uninstalled");
+  });
+
+  it("exposes the mandatory SkillOpt payload for local and remote seeding", async () => {
+    const { isMandatorySkillName, listMandatoryCuratedSkillPayloads } =
+      await loadSkillsModule();
+
+    const payloads = listMandatoryCuratedSkillPayloads();
+
+    expect(isMandatorySkillName("SkillOpt")).toBe(true);
+    expect(payloads).toEqual([
+      expect.objectContaining({
+        name: "skillopt",
+        category: "skill-optimization",
+        folderName: "skillopt",
+      }),
+    ]);
+    expect(payloads[0].content).toContain("SkillOpt for Hermes Skills");
+  });
+
+  it("only reads skill detail content from Hermes skill locations", async () => {
+    const { getSkillContent, installSkill } = await loadSkillsModule();
+    installSkill("skillopt", "research");
+    const installedPath = join(
+      testHome,
+      "profiles",
+      "research",
+      "skills",
+      "skill-optimization",
+      "skillopt",
+    );
+    const outsidePath = mkdtempSync(join(tmpdir(), "hermes-skill-outside-"));
+    writeFileSync(join(outsidePath, "SKILL.md"), "secret");
+
+    try {
+      expect(getSkillContent(installedPath)).toContain(
+        "SkillOpt for Hermes Skills",
+      );
+      expect(getSkillContent(outsidePath)).toBe("");
+    } finally {
+      rmSync(outsidePath, { recursive: true, force: true });
+    }
   });
 });

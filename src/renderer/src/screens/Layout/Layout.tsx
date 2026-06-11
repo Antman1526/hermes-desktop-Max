@@ -99,8 +99,7 @@ function Layout({
     () => new Set<View>(["chat"]),
   );
   // Remote-only mode — SSH tunnel has full access; only pure HTTP remote mode restricts screens
-  const [connectionMode, setConnectionMode] =
-    useState<ConnectionMode>("local");
+  const [connectionMode, setConnectionMode] = useState<ConnectionMode>("local");
 
   const paneStyle = (target: View): React.CSSProperties => ({
     display: view === target ? "flex" : "none",
@@ -121,7 +120,10 @@ function Layout({
       .then((config) => setConnectionMode(config.mode));
   }, [view]);
 
-  const renderFeaturePane = (target: View, children: ViewComponent) => {
+  const renderFeaturePane = (
+    target: View,
+    children: ViewComponent,
+  ): React.JSX.Element | null => {
     if (!visitedViews.has(target)) return null;
     const capability = getFeatureCapability(target, connectionMode);
     return (
@@ -347,10 +349,7 @@ function Layout({
 
         {renderFeaturePane("tools", <Tools profile={activeProfile} />)}
 
-        {renderFeaturePane(
-          "schedules",
-          <Schedules profile={activeProfile} />,
-        )}
+        {renderFeaturePane("schedules", <Schedules profile={activeProfile} />)}
 
         {renderFeaturePane("kanban", () => (
           <Kanban profile={activeProfile} visible={view === "kanban"} />

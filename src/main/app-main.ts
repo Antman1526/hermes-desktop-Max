@@ -118,7 +118,13 @@ import {
   listCachedSessions,
   updateSessionTitle,
 } from "./session-cache";
-import { listModels, addModel, removeModel, updateModel } from "./models";
+import {
+  ensureActiveDefaultLocalModelConfig,
+  listModels,
+  addModel,
+  removeModel,
+  updateModel,
+} from "./models";
 import {
   getLocalModelServerStatus,
   getLocalModelRuntimeStatus,
@@ -661,6 +667,7 @@ function setupIPC(): void {
     const conn = getConnectionConfig();
     if (conn.mode === "ssh" && conn.ssh)
       return sshGetModelConfig(conn.ssh, profile);
+    ensureActiveDefaultLocalModelConfig(profile);
     return getModelConfig(profile);
   });
 
@@ -1744,8 +1751,7 @@ function setupIPC(): void {
         autoStart?: boolean;
         telemetryDisabled?: boolean;
       },
-    ) =>
-      setPaperclipConfig(config),
+    ) => setPaperclipConfig(config),
   );
   ipcMain.handle("paperclip-status", () => getPaperclipStatus());
   ipcMain.handle("start-paperclip", () => startPaperclip());
@@ -1952,7 +1958,9 @@ function setupUpdater(): void {
 
   autoUpdater.on("error", (err) => {
     if (shouldSuppressUpdateErrorMessage(err.message)) {
-      updaterLogger.warn(`Suppressed non-actionable update error: ${err.message}`);
+      updaterLogger.warn(
+        `Suppressed non-actionable update error: ${err.message}`,
+      );
       return;
     }
     mainWindow?.webContents.send("update-error", err.message);
@@ -2079,7 +2087,7 @@ app.on("before-quit", () => {
   stopPaperclip();
 });
 
-app.on("will-quit", (_event) => {
+app.on("will-quit", () => {
   logStartup("will-quit");
 });
 

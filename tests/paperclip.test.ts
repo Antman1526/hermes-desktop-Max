@@ -118,7 +118,7 @@ describe("Paperclip sidecar config", () => {
       requestedPaths.push(req.url ?? "");
       if (req.url === "/health") {
         res.writeHead(200, { "Content-Type": "text/html" });
-        res.end("<!doctype html><div id=\"root\"></div>");
+        res.end('<!doctype html><div id="root"></div>');
         return;
       }
       if (req.url === "/api/health") {
@@ -134,9 +134,7 @@ describe("Paperclip sidecar config", () => {
     await new Promise<void>((resolve) => server.listen(0, resolve));
     const { port } = server.address() as AddressInfo;
 
-    await expect(requestHealth(`http://127.0.0.1:${port}`)).resolves.toBe(
-      true,
-    );
+    await expect(requestHealth(`http://127.0.0.1:${port}`)).resolves.toBe(true);
     expect(requestedPaths).toEqual(["/api/health"]);
   });
 });

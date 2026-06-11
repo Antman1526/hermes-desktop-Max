@@ -74,28 +74,82 @@ describe("useModelConfig", () => {
     );
   });
 
+  it("reports local model readiness after auto-port startup", async () => {
+    const { result } = renderHook(() => useModelConfig());
+
+    await act(async () => {
+      await result.current.selectModel(
+        "custom",
+        "/models/Hermes.gguf",
+        "http://localhost:8080/v1",
+        {
+          launchable: true,
+          modelPath: "/models/Hermes.gguf",
+        },
+      );
+    });
+
+    expect(result.current.localModelReadiness).toEqual({
+      state: "ready",
+      message: "Local model ready at http://localhost:8081/v1",
+    });
+  });
+
   it("does not select unavailable local file models", async () => {
     const { result } = renderHook(() => useModelConfig());
 
-    await expect(
-      act(async () => {
-        await result.current.selectModel(
-          "custom",
-          "/Volumes/MainStore/Development/AI_Models/GGUF/Hermes.gguf",
-          "http://localhost:8080/v1",
-          {
-            launchable: true,
-            modelPath:
-              "/Volumes/MainStore/Development/AI_Models/GGUF/Hermes.gguf",
-            available: false,
-            unavailableReason:
-              "Model folder is not mounted: /Volumes/MainStore/Development/AI_Models",
-          },
-        );
-      }),
-    ).rejects.toThrow("Model folder is not mounted");
+    await act(async () => {
+      await result.current.selectModel(
+        "custom",
+        "/Volumes/MainStore/Development/AI_Models/GGUF/Hermes.gguf",
+        "http://localhost:8080/v1",
+        {
+          launchable: true,
+          modelPath:
+            "/Volumes/MainStore/Development/AI_Models/GGUF/Hermes.gguf",
+          available: false,
+          unavailableReason:
+            "Model folder is not mounted: /Volumes/MainStore/Development/AI_Models",
+        },
+      );
+    });
 
     expect(startLocalModelServer).not.toHaveBeenCalled();
     expect(setModelConfig).not.toHaveBeenCalled();
+    expect(result.current.localModelReadiness).toEqual({
+      state: "error",
+      message:
+        "Model folder is not mounted: /Volumes/MainStore/Development/AI_Models",
+    });
+  });
+
+  it("reports local model startup errors without saving the broken model", async () => {
+    startLocalModelServer.mockResolvedValueOnce({
+      running: false,
+      managed: false,
+      launcherAvailable: false,
+      modelPath: "/models/Hermes.gguf",
+      baseUrl: "http://localhost:8080/v1",
+      error: "llama-server is not installed.",
+    });
+    const { result } = renderHook(() => useModelConfig());
+
+    await act(async () => {
+      await result.current.selectModel(
+        "custom",
+        "/models/Hermes.gguf",
+        "http://localhost:8080/v1",
+        {
+          launchable: true,
+          modelPath: "/models/Hermes.gguf",
+        },
+      );
+    });
+
+    expect(setModelConfig).not.toHaveBeenCalled();
+    expect(result.current.localModelReadiness).toEqual({
+      state: "error",
+      message: "llama-server is not installed.",
+    });
   });
 });

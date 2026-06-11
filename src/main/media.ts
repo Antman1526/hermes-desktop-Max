@@ -88,6 +88,7 @@ export async function saveMedia(
       const response = await fetch(src);
       if (!response.ok) return false;
       const buffer = Buffer.from(await response.arrayBuffer());
+      if (buffer.length > MAX_MEDIA_BYTES) return false;
       writeFileSync(dest, buffer);
       return true;
     }

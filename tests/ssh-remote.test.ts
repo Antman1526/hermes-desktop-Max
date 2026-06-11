@@ -196,3 +196,21 @@ describe("buildRemoteHermesCmd venv probe (issue #284)", () => {
     expect(cmd).toContain("command -v hermes");
   });
 });
+
+describe("remote profile command parity", () => {
+  it("uses the same singular profile create command shape as local mode", () => {
+    const command = buildRemoteHermesCmd([
+      "profile",
+      "create",
+      "work",
+      "--clone",
+    ]);
+
+    expect(parseNulArgs(runWithHermesShim(command))).toEqual([
+      "profile",
+      "create",
+      "work",
+      "--clone",
+    ]);
+  });
+});

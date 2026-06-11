@@ -7,7 +7,7 @@ import {
   readFileSync,
   statSync,
 } from "fs";
-import { dirname, join } from "path";
+import { dirname, join, resolve, sep } from "path";
 import { homedir } from "os";
 import {
   HERMES_HOME,
@@ -63,6 +63,16 @@ interface CuratedSkill {
 }
 
 const MANDATORY_CURATED_SKILL_NAMES = new Set(["skillopt"]);
+export const MANDATORY_SKILLOPT_UNINSTALL_ERROR =
+  "SkillOpt is required by Hermes Desktop Max for the mandatory sleep-cycle workflow and cannot be uninstalled.";
+
+export interface MandatoryCuratedSkillPayload {
+  name: string;
+  category: string;
+  folderName: string;
+  description: string;
+  content: string;
+}
 
 /**
  * Parse SKILL.md frontmatter (YAML between --- markers) for name/description.
@@ -119,6 +129,24 @@ function curatedSkillsRoot(): string {
     curatedSkillsRootCandidates().find((candidate) => existsSync(candidate)) ??
     ""
   );
+}
+
+function isPathInside(child: string, parent: string): boolean {
+  const resolvedChild = resolve(child);
+  const resolvedParent = resolve(parent);
+  return (
+    resolvedChild === resolvedParent ||
+    resolvedChild.startsWith(`${resolvedParent}${sep}`)
+  );
+}
+
+function isSafeSkillPath(skillPath: string): boolean {
+  if (!skillPath) return false;
+  if (isPathInside(skillPath, join(HERMES_HOME, "skills"))) return true;
+  if (isPathInside(skillPath, join(HERMES_HOME, "profiles"))) return true;
+  return curatedSkillsRootCandidates()
+    .filter(Boolean)
+    .some((candidate) => isPathInside(skillPath, candidate));
 }
 
 function readJsonFile<T>(file: string): T | null {
@@ -226,8 +254,20 @@ function installCuratedSkill(
   }
 }
 
-function isMandatorySkillName(name: string): boolean {
+export function isMandatorySkillName(name: string): boolean {
   return MANDATORY_CURATED_SKILL_NAMES.has(name.trim().toLowerCase());
+}
+
+export function listMandatoryCuratedSkillPayloads(): MandatoryCuratedSkillPayload[] {
+  return listCuratedSkills()
+    .filter((skill) => isMandatorySkillName(skill.name))
+    .map((skill) => ({
+      name: skill.name,
+      category: skill.manifest.category,
+      folderName: skill.folderName,
+      description: skill.description,
+      content: readFileSync(join(skill.skillPath, "SKILL.md"), "utf-8"),
+    }));
 }
 
 function curatedSkillDestination(
@@ -313,6 +353,7 @@ export function listInstalledSkills(profile?: string): InstalledSkill[] {
  * Get the full content of a SKILL.md for the detail view.
  */
 export function getSkillContent(skillPath: string): string {
+  if (!isSafeSkillPath(skillPath)) return "";
   const skillFile = join(skillPath, "SKILL.md");
   if (!existsSync(skillFile)) return "";
 
@@ -544,8 +585,7 @@ export function uninstallSkill(name: string, profile?: string): SkillCliResult {
   if (isMandatorySkillName(name)) {
     return {
       success: false,
-      error:
-        "SkillOpt is required by Hermes Desktop Max for the mandatory sleep-cycle workflow and cannot be uninstalled.",
+      error: MANDATORY_SKILLOPT_UNINSTALL_ERROR,
     };
   }
 

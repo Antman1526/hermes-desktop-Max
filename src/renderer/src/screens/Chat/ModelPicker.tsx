@@ -2,6 +2,7 @@ import { memo, useEffect, useRef, useState } from "react";
 import { ChevronDown } from "lucide-react";
 import { useI18n } from "../../components/useI18n";
 import type { ModelGroup } from "./types";
+import type { LocalModelReadiness } from "./hooks/useModelConfig";
 
 interface ModelPickerProps {
   currentModel: string;
@@ -9,6 +10,7 @@ interface ModelPickerProps {
   currentBaseUrl: string;
   modelGroups: ModelGroup[];
   displayModel: string;
+  localModelReadiness?: LocalModelReadiness;
   onOpen: () => void;
   onSelectModel: (
     provider: string,
@@ -20,7 +22,7 @@ interface ModelPickerProps {
       available?: boolean;
       unavailableReason?: string;
     },
-  ) => void;
+  ) => void | Promise<void>;
 }
 
 export const ModelPicker = memo(function ModelPicker({
@@ -29,6 +31,7 @@ export const ModelPicker = memo(function ModelPicker({
   currentBaseUrl,
   modelGroups,
   displayModel,
+  localModelReadiness,
   onOpen,
   onSelectModel,
 }: ModelPickerProps): React.JSX.Element {
@@ -64,7 +67,7 @@ export const ModelPicker = memo(function ModelPicker({
       unavailableReason?: string;
     },
   ): void {
-    onSelectModel(provider, model, baseUrl, options);
+    void onSelectModel(provider, model, baseUrl, options);
     setIsOpen(false);
     setCustomInput("");
   }
@@ -85,6 +88,18 @@ export const ModelPicker = memo(function ModelPicker({
         <span className="chat-model-name">{displayModel}</span>
         <ChevronDown size={12} />
       </button>
+      {localModelReadiness && localModelReadiness.state !== "idle" && (
+        <span
+          className={`chat-model-status ${localModelReadiness.state}`}
+          title={localModelReadiness.message}
+        >
+          {localModelReadiness.state === "starting"
+            ? "Starting"
+            : localModelReadiness.state === "ready"
+              ? "Ready"
+              : "Error"}
+        </span>
+      )}
 
       {isOpen && (
         <div className="chat-model-dropdown">

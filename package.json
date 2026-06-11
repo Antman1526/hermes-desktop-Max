@@ -46,7 +46,6 @@
     "@types/react-dom": "^19.2.3",
     "@types/react-syntax-highlighter": "^15.5.13",
     "@vitejs/plugin-react": "^5.1.1",
-    "@wesbos/code-icons": "^1.2.4",
     "electron": "^39.2.6",
     "electron-builder": "^26.0.12",
     "electron-vite": "^5.0.0",

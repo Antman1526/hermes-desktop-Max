@@ -22,7 +22,9 @@ vi.mock("../../hooks/useDiscoveredModels", () => ({
 
 import Providers from "./Providers";
 
-function installHermesApi(overrides: Partial<Record<string, ReturnType<typeof vi.fn>>> = {}) {
+function installHermesApi(
+  overrides: Partial<Record<string, ReturnType<typeof vi.fn>>> = {},
+): Record<string, ReturnType<typeof vi.fn>> {
   const api = {
     getEnv: vi.fn().mockResolvedValue({}),
     getModelConfig: vi.fn().mockResolvedValue({
@@ -86,9 +88,11 @@ describe("Providers profile-aware credential pool", () => {
     ) as HTMLInputElement | null;
     expect(keyInput).toBeTruthy();
 
-    const addButton = Array.from(view.container.querySelectorAll("button")).find(
-      (button) => button.textContent === "settings.add",
-    ) as HTMLButtonElement | undefined;
+    const addButton = Array.from(
+      view.container.querySelectorAll("button"),
+    ).find((button) => button.textContent === "settings.add") as
+      | HTMLButtonElement
+      | undefined;
     expect(addButton).toBeTruthy();
 
     await act(async () => {

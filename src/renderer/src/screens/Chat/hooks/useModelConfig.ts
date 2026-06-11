@@ -3,12 +3,18 @@ import { PROVIDERS } from "../../../constants";
 import { useI18n } from "../../../components/useI18n";
 import type { ModelGroup } from "../types";
 
+export interface LocalModelReadiness {
+  state: "idle" | "starting" | "ready" | "error";
+  message?: string;
+}
+
 interface UseModelConfigResult {
   currentModel: string;
   currentProvider: string;
   currentBaseUrl: string;
   modelGroups: ModelGroup[];
   displayModel: string;
+  localModelReadiness: LocalModelReadiness;
   reload: () => Promise<void>;
   selectModel: (
     provider: string,
@@ -72,6 +78,10 @@ export function useModelConfig(profile?: string): UseModelConfigResult {
   const [currentProvider, setCurrentProvider] = useState("auto");
   const [currentBaseUrl, setCurrentBaseUrl] = useState("");
   const [modelGroups, setModelGroups] = useState<ModelGroup[]>([]);
+  const [localModelReadiness, setLocalModelReadiness] =
+    useState<LocalModelReadiness>({
+      state: "idle",
+    });
 
   const reload = useCallback(async (): Promise<void> => {
     const [mc, savedModels] = await Promise.all([
@@ -111,16 +121,34 @@ export function useModelConfig(profile?: string): UseModelConfigResult {
       // to the provider's canonical URL.
       let effectiveBaseUrl = provider === "custom" ? baseUrl : "";
       if (options?.available === false) {
-        throw new Error(
-          options.unavailableReason || "Local model is unavailable.",
-        );
+        setLocalModelReadiness({
+          state: "error",
+          message: options.unavailableReason || "Local model is unavailable.",
+        });
+        return;
       }
       if (options?.launchable && options.modelPath) {
+        setLocalModelReadiness({
+          state: "starting",
+          message: "Starting local model server...",
+        });
         const status = await window.hermesAPI.startLocalModelServer(
           options.modelPath,
         );
-        if (status.error) throw new Error(status.error);
+        if (status.error) {
+          setLocalModelReadiness({
+            state: "error",
+            message: status.error,
+          });
+          return;
+        }
         effectiveBaseUrl = status.baseUrl;
+        setLocalModelReadiness({
+          state: "ready",
+          message: `Local model ready at ${status.baseUrl}`,
+        });
+      } else {
+        setLocalModelReadiness({ state: "idle" });
       }
       await window.hermesAPI.setModelConfig(
         provider,
@@ -151,6 +179,7 @@ export function useModelConfig(profile?: string): UseModelConfigResult {
     currentBaseUrl,
     modelGroups,
     displayModel,
+    localModelReadiness,
     reload,
     selectModel,
   };

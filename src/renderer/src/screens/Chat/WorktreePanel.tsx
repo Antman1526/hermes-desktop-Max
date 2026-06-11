@@ -1,6 +1,16 @@
 import { useState, useEffect, useCallback, memo } from "react";
-import { Folder, ChevronRight, ChevronDown } from "lucide-react";
-import { getIconForFile, getSVGStringFromFileType } from "@wesbos/code-icons";
+import {
+  Archive,
+  ChevronDown,
+  ChevronRight,
+  File,
+  FileCode2,
+  FileImage,
+  FileJson2,
+  FileText,
+  Folder,
+  TerminalSquare,
+} from "lucide-react";
 import { FileViewer } from "./FileViewer";
 
 interface FileEntry {
@@ -20,19 +30,30 @@ interface TreeItemProps {
 }
 
 function FileIcon({ filename }: { filename: string }): React.JSX.Element {
-  const iconType = getIconForFile(filename);
-  const iconData = iconType ? getSVGStringFromFileType(iconType) : null;
-  const svgString =
-    iconData && typeof iconData === "object" && "svg" in iconData
-      ? iconData.svg
-      : "";
-
-  return (
-    <div
-      className="worktree-file-icon-wrapper"
-      dangerouslySetInnerHTML={{ __html: svgString }}
-    />
-  );
+  const lower = filename.toLowerCase();
+  if (/\.(png|jpe?g|gif|webp|avif|bmp|svg)$/.test(lower)) {
+    return <FileImage size={14} className="worktree-icon" />;
+  }
+  if (/\.(json|jsonc|lock)$/.test(lower)) {
+    return <FileJson2 size={14} className="worktree-icon" />;
+  }
+  if (/\.(md|mdx|txt|log|yml|yaml|toml|ini|env|csv)$/.test(lower)) {
+    return <FileText size={14} className="worktree-icon" />;
+  }
+  if (/\.(sh|bash|zsh|fish|ps1|bat|cmd)$/.test(lower)) {
+    return <TerminalSquare size={14} className="worktree-icon" />;
+  }
+  if (/\.(zip|tar|gz|tgz|bz2|xz|7z|rar|dmg)$/.test(lower)) {
+    return <Archive size={14} className="worktree-icon" />;
+  }
+  if (
+    /\.(ts|tsx|js|jsx|mjs|cjs|py|rs|go|swift|java|kt|kts|c|cc|cpp|h|hpp|cs|rb|php|html|css|scss|sql)$/.test(
+      lower,
+    )
+  ) {
+    return <FileCode2 size={14} className="worktree-icon" />;
+  }
+  return <File size={14} className="worktree-icon" />;
 }
 
 function TreeItem({

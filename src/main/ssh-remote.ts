@@ -11,7 +11,10 @@ import type { SshConfig } from "./ssh-tunnel";
 import type { KanbanTask } from "./kanban";
 import { buildSshControlOptions } from "./ssh-options";
 import {
+  MANDATORY_SKILLOPT_UNINSTALL_ERROR,
   classifySkillCliOutput,
+  isMandatorySkillName,
+  listMandatoryCuratedSkillPayloads,
   type InstalledSkill,
   type SkillSearchResult,
 } from "./skills";
@@ -24,6 +27,7 @@ import type { MemoryProviderInfo } from "./installer";
 import { t } from "../shared/i18n";
 import { getAppLocale } from "./locale";
 import { HIDDEN_SUBPROCESS_OPTIONS } from "./process-options";
+import { isValidNamedProfileName } from "./utils";
 
 // ── SSH exec core ────────────────────────────────────────────────────────────
 
@@ -165,10 +169,43 @@ async function sshWriteFile(
 
 const REMOTE_PREFIX = "REMOTE:";
 
+function remoteProfileHome(profile?: string): string {
+  return profile && profile !== "default"
+    ? `~/.hermes/profiles/${profile}`
+    : "~/.hermes";
+}
+
+function remoteSkillDir(
+  profile: string | undefined,
+  category: string,
+  folderName: string,
+): string {
+  return `${remoteProfileHome(profile)}/skills/${category}/${folderName}`;
+}
+
+async function sshEnsureMandatoryCuratedSkills(
+  config: SshConfig,
+  profile?: string,
+): Promise<void> {
+  for (const skill of listMandatoryCuratedSkillPayloads()) {
+    const remoteDir = remoteSkillDir(profile, skill.category, skill.folderName);
+    const remoteSkillFile = `${remoteDir}/SKILL.md`;
+    try {
+      const current = await sshReadFile(config, remoteSkillFile);
+      if (current.trim()) continue;
+      await sshWriteFile(config, remoteSkillFile, skill.content);
+    } catch {
+      // Listing remote skills/profiles should remain best-effort if a remote
+      // filesystem permission issue prevents seeding the mandatory skill.
+    }
+  }
+}
+
 export async function sshListInstalledSkills(
   config: SshConfig,
   profile?: string,
 ): Promise<InstalledSkill[]> {
+  await sshEnsureMandatoryCuratedSkills(config, profile);
   const script = `
 import os, json, sys
 payload = json.load(sys.stdin)
@@ -220,7 +257,11 @@ print(json.dumps(skills))
       description: string;
       path: string;
     }>;
-    return parsed.map((s) => ({ ...s, path: REMOTE_PREFIX + s.path }));
+    return parsed.map((s) => ({
+      ...s,
+      path: REMOTE_PREFIX + s.path,
+      required: isMandatorySkillName(s.name),
+    }));
   } catch {
     return [];
   }
@@ -257,6 +298,13 @@ export async function sshUninstallSkill(
   config: SshConfig,
   name: string,
 ): Promise<{ success: boolean; error?: string }> {
+  if (isMandatorySkillName(name)) {
+    return {
+      success: false,
+      error: MANDATORY_SKILLOPT_UNINSTALL_ERROR,
+    };
+  }
+
   try {
     const stdout = await sshExec(
       config,
@@ -285,6 +333,7 @@ export async function sshSearchSkills(
         category: r.category || "",
         source: r.source || "",
         installed: false,
+        required: isMandatorySkillName(r.name || ""),
       }));
     }
     return [];
@@ -296,7 +345,23 @@ export async function sshSearchSkills(
 export async function sshListBundledSkills(
   config: SshConfig,
 ): Promise<SkillSearchResult[]> {
-  return await sshSearchSkills(config, "");
+  const remoteSkills = await sshSearchSkills(config, "");
+  const seen = new Set(remoteSkills.map((skill) => skill.name.toLowerCase()));
+  for (const skill of listMandatoryCuratedSkillPayloads()) {
+    if (seen.has(skill.name.toLowerCase())) continue;
+    remoteSkills.push({
+      name: skill.name,
+      description: skill.description,
+      category: skill.category,
+      source: "microsoft/SkillOpt",
+      installed: true,
+      required: true,
+    });
+  }
+  return remoteSkills.sort(
+    (a, b) =>
+      a.category.localeCompare(b.category) || a.name.localeCompare(b.name),
+  );
 }
 
 // ── Memory ───────────────────────────────────────────────────────────────────
@@ -1307,7 +1372,9 @@ export async function sshListProfiles(
   config: SshConfig,
 ): Promise<SshProfileInfo[]> {
   const script = `
-import os, json
+import os, json, sys
+payload = json.load(sys.stdin)
+mandatory_skills = payload.get("mandatorySkills", [])
 hermes_home = os.path.expanduser("~/.hermes")
 profiles_dir = os.path.join(hermes_home, "profiles")
 profiles = []
@@ -1336,6 +1403,21 @@ def count_skills(path):
                         count += 1
     return count
 
+def ensure_mandatory_skills(path):
+    for skill in mandatory_skills:
+        category = skill.get("category", "")
+        folder = skill.get("folderName", "")
+        content = skill.get("content", "")
+        if not category or not folder or not content:
+            continue
+        skill_dir = os.path.join(path, "skills", category, folder)
+        skill_file = os.path.join(skill_dir, "SKILL.md")
+        if os.path.exists(skill_file):
+            continue
+        os.makedirs(skill_dir, exist_ok=True)
+        with open(skill_file, "w") as f:
+            f.write(content)
+
 def gw_running(path):
     pid_file = os.path.join(path, "gateway.pid")
     if not os.path.exists(pid_file): return False
@@ -1347,6 +1429,7 @@ def gw_running(path):
         return False
 
 # Default profile
+ensure_mandatory_skills(hermes_home)
 model, provider = read_config(hermes_home)
 profiles.append({
     "name": "default", "path": hermes_home, "isDefault": True, "isActive": True,
@@ -1361,6 +1444,7 @@ if os.path.isdir(profiles_dir):
     for name in sorted(os.listdir(profiles_dir)):
         p = os.path.join(profiles_dir, name)
         if not os.path.isdir(p): continue
+        ensure_mandatory_skills(p)
         model, provider = read_config(p)
         profiles.append({
             "name": name, "path": p, "isDefault": False, "isActive": False,
@@ -1374,7 +1458,13 @@ if os.path.isdir(profiles_dir):
 print(json.dumps(profiles))
 `;
   try {
-    const out = await sshPython(config, script);
+    const out = await sshPython(
+      config,
+      script,
+      pythonJsonInput({
+        mandatorySkills: listMandatoryCuratedSkillPayloads(),
+      }),
+    );
     return JSON.parse(out.trim() || "[]");
   } catch {
     return [
@@ -1400,20 +1490,17 @@ export async function sshCreateProfile(
   clone: boolean,
 ): Promise<boolean> {
   try {
-    const safe = name.replace(/[^a-zA-Z0-9_-]/g, "");
-    if (!safe) return false;
-    const quoted = shellQuote(safe);
-    if (clone) {
-      await sshExec(
-        config,
-        `hermes profiles create ${quoted} --clone-from default 2>&1 || mkdir -p ~/.hermes/profiles/${quoted}`,
-      );
-    } else {
-      await sshExec(
-        config,
-        `hermes profiles create ${quoted} 2>&1 || mkdir -p ~/.hermes/profiles/${quoted}`,
-      );
-    }
+    if (name === "default" || !isValidNamedProfileName(name)) return false;
+    const args = clone
+      ? ["profile", "create", name, "--clone"]
+      : ["profile", "create", name];
+    await sshExec(
+      config,
+      buildRemoteHermesCmd(args, " 2>&1"),
+      undefined,
+      15000,
+    );
+    await sshEnsureMandatoryCuratedSkills(config, name);
     return true;
   } catch {
     return false;
@@ -1425,12 +1512,10 @@ export async function sshDeleteProfile(
   name: string,
 ): Promise<boolean> {
   try {
-    const safe = name.replace(/[^a-zA-Z0-9_-]/g, "");
-    if (!safe || safe === "default") return false;
-    const quoted = shellQuote(safe);
+    if (name === "default" || !isValidNamedProfileName(name)) return false;
     await sshExec(
       config,
-      `hermes profiles delete ${quoted} --yes 2>&1 || rm -rf ~/.hermes/profiles/${quoted}`,
+      buildRemoteHermesCmd(["profile", "delete", name, "--yes"], " 2>&1"),
     );
     return true;
   } catch {

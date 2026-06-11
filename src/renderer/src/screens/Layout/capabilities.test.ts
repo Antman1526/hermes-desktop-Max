@@ -26,7 +26,9 @@ describe("Layout feature capabilities", () => {
       const capability = getFeatureCapability("providers", mode);
       expect(capability.feature).toBe("providers");
       expect(capability.mode).toBe(mode);
-      expect(capability.availability).toMatch(/^(available|read-only|unavailable)$/);
+      expect(capability.availability).toMatch(
+        /^(available|read-only|unavailable)$/,
+      );
     }
   });
 });

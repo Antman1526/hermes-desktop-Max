@@ -12,6 +12,7 @@ import {
   LOCAL_MODEL_SERVER_CONTEXT_SIZE,
   LOCAL_MODEL_SERVER_MISSING_LLAMA_HINT,
   resolveLlamaServerCommand,
+  validateLocalModelLaunchPath,
   waitForLocalModelServerReady,
 } from "../src/main/local-model-server";
 
@@ -113,6 +114,14 @@ describe("local model server launcher helpers", () => {
     expect(isDiscoveredLocalModelPath("/other/Unknown.gguf", files)).toBe(
       false,
     );
+  });
+
+  it("rejects launch requests for GGUF files outside configured local model roots", () => {
+    const files = [{ path: "/models/Hermes-3.gguf", format: "gguf" as const }];
+
+    expect(
+      validateLocalModelLaunchPath("/other/Unknown.gguf", files),
+    ).toContain("outside configured local model roots");
   });
 
   it("waits for the local OpenAI endpoint to become ready before reporting startup success", async () => {

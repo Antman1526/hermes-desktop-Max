@@ -2797,6 +2797,43 @@ body {
   white-space: nowrap;
 }
 
+.chat-model-status {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  max-width: 180px;
+  margin-left: 4px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-tertiary);
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-model-status.starting {
+  border-color: var(--warning);
+  background: var(--warning-bg);
+  color: var(--warning);
+}
+
+.chat-model-status.ready {
+  border-color: var(--success);
+  background: var(--success-bg);
+  color: var(--success);
+}
+
+.chat-model-status.error {
+  border-color: var(--danger, #e06c75);
+  background: rgba(224, 108, 117, 0.1);
+  color: var(--danger, #e06c75);
+}
+
 .chat-model-dropdown {
   position: absolute;
   bottom: 100%;

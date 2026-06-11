@@ -162,7 +162,11 @@ export function requestHealth(url: string): Promise<boolean> {
           body += chunk;
         });
         res.on("end", () => {
-          if (!res.statusCode || res.statusCode < 200 || res.statusCode >= 300) {
+          if (
+            !res.statusCode ||
+            res.statusCode < 200 ||
+            res.statusCode >= 300
+          ) {
             resolve(false);
             return;
           }
@@ -381,10 +385,8 @@ export async function startPaperclip(): Promise<{
     paperclipProcess = null;
   });
 
-  const result = await waitForPaperclipStartup(
-    proc,
-    config.serverUrl,
-    () => outputChunks.join("").trim().slice(-1000),
+  const result = await waitForPaperclipStartup(proc, config.serverUrl, () =>
+    outputChunks.join("").trim().slice(-1000),
   );
   if (!result.success) {
     if (!proc.killed) proc.kill("SIGTERM");

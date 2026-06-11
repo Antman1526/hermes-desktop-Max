@@ -9,6 +9,7 @@ import {
   discoverLocalModelFiles,
   mergeDiscoveredLocalModelEntries,
 } from "./local-model-files";
+import { getModelConfig, setModelConfig } from "./config";
 
 const MODELS_FILE = join(HERMES_HOME, "models.json");
 
@@ -152,6 +153,47 @@ function seedDefaults(profile?: string): SavedModel[] {
   models.push(...buildLocalModelEntries(discoverLocalModelFiles()));
   writeModels(models);
   return models;
+}
+
+export function selectPreferredLocalDefaultModel(
+  models: SavedModel[],
+): SavedModel | null {
+  const launchable = models.filter(
+    (entry) =>
+      entry.source === "local-file" &&
+      entry.launchable &&
+      entry.available !== false &&
+      entry.modelFormat === "gguf",
+  );
+  if (launchable.length === 0) return null;
+
+  const primaryRoot = launchable.find((entry) => entry.modelRoot)?.modelRoot;
+  const primaryGgufDir = primaryRoot ? join(primaryRoot, "GGUF") : "";
+  return (
+    launchable.find((entry) =>
+      primaryGgufDir
+        ? (entry.modelPath || entry.model).startsWith(`${primaryGgufDir}/`)
+        : false,
+    ) || launchable[0]
+  );
+}
+
+export function ensureActiveDefaultLocalModelConfig(
+  profile?: string,
+): SavedModel | null {
+  const current = getModelConfig(profile);
+  if (current.model.trim()) return null;
+
+  const preferred = selectPreferredLocalDefaultModel(listModels());
+  if (!preferred) return null;
+
+  setModelConfig(
+    preferred.provider,
+    preferred.model,
+    preferred.baseUrl || "",
+    profile,
+  );
+  return preferred;
 }
 
 export function listModels(): SavedModel[] {

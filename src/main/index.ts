@@ -49,11 +49,12 @@ logBootstrap("loading app-main", {
   versions: process.versions,
 });
 
-try {
-  require("./app-main");
-  logBootstrap("loaded app-main");
-} catch (err) {
-  logBootstrap("app-main require failed", err);
-  console.error("[BOOTSTRAP REQUIRE FAILED]", err);
-  throw err;
-}
+void import("./app-main")
+  .then(() => {
+    logBootstrap("loaded app-main");
+  })
+  .catch((err) => {
+    logBootstrap("app-main import failed", err);
+    console.error("[BOOTSTRAP IMPORT FAILED]", err);
+    throw err;
+  });
