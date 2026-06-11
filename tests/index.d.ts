@@ -191,10 +191,14 @@ interface HermesAPI {
   ) => Promise<boolean>;
 
   // Skills
-  listInstalledSkills: (
-    profile?: string,
-  ) => Promise<
-    Array<{ name: string; category: string; description: string; path: string }>
+  listInstalledSkills: (profile?: string) => Promise<
+    Array<{
+      name: string;
+      category: string;
+      description: string;
+      path: string;
+      required?: boolean;
+    }>
   >;
   listBundledSkills: () => Promise<
     Array<{
@@ -208,6 +212,7 @@ interface HermesAPI {
       license?: string;
       ref?: string;
       commit?: string;
+      required?: boolean;
     }>
   >;
   getSkillContent: (skillPath: string) => Promise<string>;

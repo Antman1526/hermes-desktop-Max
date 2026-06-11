@@ -202,4 +202,49 @@ describe("Skills.tsx — Install button (issue #310 diagnosis)", () => {
       "https://microsoft.github.io/SkillOpt/",
     );
   });
+
+  it("marks mandatory installed skills as required and disables uninstall", async () => {
+    const installSkill = vi.fn().mockResolvedValue({ success: true });
+    const uninstallSkill = vi.fn().mockResolvedValue({ success: true });
+    const listInstalledSkills = vi.fn().mockResolvedValue([
+      {
+        name: "skillopt",
+        description: "mandatory sleep-cycle workflow",
+        category: "skill-optimization",
+        path: "/tmp/skillopt",
+        required: true,
+      },
+    ]);
+    const listBundledSkills = vi.fn().mockResolvedValue([]);
+    const getSkillContent = vi.fn().mockResolvedValue("# SkillOpt");
+
+    Object.defineProperty(window, "hermesAPI", {
+      configurable: true,
+      value: {
+        installSkill,
+        uninstallSkill,
+        listInstalledSkills,
+        listBundledSkills,
+        getSkillContent,
+      },
+    });
+
+    const view = render(<Skills />);
+    await waitFor(() => {
+      expect(listInstalledSkills).toHaveBeenCalled();
+      expect(view.container.textContent).toContain("Required");
+    });
+
+    const card = view.container.querySelector(".skills-card") as HTMLElement;
+    expect(card).toBeTruthy();
+    await act(async () => {
+      fireEvent.click(card);
+    });
+
+    const uninstallButton = Array.from(
+      view.container.querySelectorAll("button"),
+    ).find((button) => button.textContent?.includes("Required"));
+    expect(uninstallButton).toBeTruthy();
+    expect(uninstallButton).toBeDisabled();
+  });
 });

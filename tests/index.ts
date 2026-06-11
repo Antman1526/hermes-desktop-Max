@@ -303,7 +303,13 @@ const hermesAPI = {
   listInstalledSkills: (
     profile?: string,
   ): Promise<
-    Array<{ name: string; category: string; description: string; path: string }>
+    Array<{
+      name: string;
+      category: string;
+      description: string;
+      path: string;
+      required?: boolean;
+    }>
   > => ipcRenderer.invoke("list-installed-skills", profile),
   listBundledSkills: (): Promise<
     Array<{
@@ -317,6 +323,7 @@ const hermesAPI = {
       license?: string;
       ref?: string;
       commit?: string;
+      required?: boolean;
     }>
   > => ipcRenderer.invoke("list-bundled-skills"),
   getSkillContent: (skillPath: string): Promise<string> =>

@@ -24,6 +24,7 @@ export interface InstalledSkill {
   category: string;
   description: string;
   path: string;
+  required?: boolean;
 }
 
 export interface SkillSearchResult {
@@ -37,6 +38,7 @@ export interface SkillSearchResult {
   license?: string;
   ref?: string;
   commit?: string;
+  required?: boolean;
 }
 
 interface CuratedSkillManifest {
@@ -59,6 +61,8 @@ interface CuratedSkill {
   name: string;
   description: string;
 }
+
+const MANDATORY_CURATED_SKILL_NAMES = new Set(["skillopt"]);
 
 /**
  * Parse SKILL.md frontmatter (YAML between --- markers) for name/description.
@@ -210,12 +214,7 @@ function installCuratedSkill(
   const skill = findCuratedSkill(identifier);
   if (!skill) return null;
 
-  const destination = join(
-    profileHome(profile),
-    "skills",
-    skill.manifest.category,
-    skill.folderName,
-  );
+  const destination = curatedSkillDestination(skill, profile);
   try {
     copyDirectoryRecursive(skill.skillPath, destination);
     return { success: true };
@@ -227,11 +226,37 @@ function installCuratedSkill(
   }
 }
 
+function isMandatorySkillName(name: string): boolean {
+  return MANDATORY_CURATED_SKILL_NAMES.has(name.trim().toLowerCase());
+}
+
+function curatedSkillDestination(
+  skill: CuratedSkill,
+  profile?: string,
+): string {
+  return join(
+    profileHome(profile),
+    "skills",
+    skill.manifest.category,
+    skill.folderName,
+  );
+}
+
+export function ensureMandatoryCuratedSkills(profile?: string): void {
+  for (const skill of listCuratedSkills()) {
+    if (!isMandatorySkillName(skill.name)) continue;
+    const skillFile = join(curatedSkillDestination(skill, profile), "SKILL.md");
+    if (existsSync(skillFile)) continue;
+    installCuratedSkill(skill.name, profile);
+  }
+}
+
 /**
  * Walk the skills directory to find all installed skills.
  * Structure: skills/<category>/<skill-name>/SKILL.md
  */
 export function listInstalledSkills(profile?: string): InstalledSkill[] {
+  ensureMandatoryCuratedSkills(profile);
   const skillsDir = join(profileHome(profile), "skills");
   if (!existsSync(skillsDir)) return [];
 
@@ -261,6 +286,7 @@ export function listInstalledSkills(profile?: string): InstalledSkill[] {
             category,
             description: meta.description || "",
             path: entryPath,
+            required: isMandatorySkillName(meta.name || entry),
           });
         } catch {
           skills.push({
@@ -268,6 +294,7 @@ export function listInstalledSkills(profile?: string): InstalledSkill[] {
             category,
             description: "",
             path: entryPath,
+            required: isMandatorySkillName(entry),
           });
         }
       }
@@ -406,6 +433,7 @@ export function listBundledSkills(): SkillSearchResult[] {
       license: skill.manifest.license,
       ref: skill.manifest.ref,
       commit: skill.manifest.commit,
+      required: isMandatorySkillName(skill.name),
     });
   }
 
@@ -513,6 +541,14 @@ export function installSkill(
 }
 
 export function uninstallSkill(name: string, profile?: string): SkillCliResult {
+  if (isMandatorySkillName(name)) {
+    return {
+      success: false,
+      error:
+        "SkillOpt is required by Hermes Desktop Max for the mandatory sleep-cycle workflow and cannot be uninstalled.",
+    };
+  }
+
   try {
     const args = hermesCliArgs(["skills", "uninstall", name]);
     if (profile && profile !== "default") {

@@ -4449,6 +4449,35 @@ body {
   border-radius: 10px;
 }
 
+.skills-card-installed-badge.required,
+.skills-card-required-badge {
+  color: var(--accent-text);
+  background: var(--accent-subtle);
+  border: 1px solid var(--accent);
+}
+
+.skills-card-required-badge {
+  align-self: flex-start;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+
+.skills-required-inline {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 8px;
+  color: var(--accent-text);
+  background: var(--accent-subtle);
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  padding: 1px 7px;
+  font-size: 10px;
+  font-weight: 700;
+  vertical-align: middle;
+}
+
 .skills-card-install-btn {
   padding: 4px 12px;
   font-size: 12px;

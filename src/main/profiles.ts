@@ -17,6 +17,7 @@ import {
   PROFILE_NAME_ERROR,
 } from "./utils";
 import { HIDDEN_SUBPROCESS_OPTIONS } from "./process-options";
+import { ensureMandatoryCuratedSkills } from "./skills";
 
 const PROFILES_DIR = join(HERMES_HOME, "profiles");
 
@@ -113,6 +114,7 @@ async function fileExists(path: string): Promise<boolean> {
 export async function listProfiles(): Promise<ProfileInfo[]> {
   const activeName = await getActiveProfileName();
   const profiles: ProfileInfo[] = [];
+  ensureMandatoryCuratedSkills();
 
   // Default profile is HERMES_HOME itself
   const [
@@ -154,6 +156,7 @@ export async function listProfiles(): Promise<ProfileInfo[]> {
         const profilePath = join(PROFILES_DIR, name);
         const stat = await fs.stat(profilePath);
         if (!stat.isDirectory()) return null;
+        ensureMandatoryCuratedSkills(name);
 
         // Any subdirectory of ~/.hermes/profiles/ is treated as a profile.
         // We deliberately do NOT require config.yaml or .env to exist —
@@ -221,6 +224,7 @@ export function createProfile(
       timeout: 15000,
       ...HIDDEN_SUBPROCESS_OPTIONS,
     });
+    ensureMandatoryCuratedSkills(name);
     return { success: true };
   } catch (err) {
     const msg =

@@ -15,6 +15,7 @@ interface InstalledSkill {
   category: string;
   description: string;
   path: string;
+  required?: boolean;
 }
 
 interface BundledSkill {
@@ -28,6 +29,7 @@ interface BundledSkill {
   license?: string;
   ref?: string;
   commit?: string;
+  required?: boolean;
 }
 
 interface SkillsProps {
@@ -183,15 +185,28 @@ function Skills({ profile }: SkillsProps): React.JSX.Element {
                 <div className="skills-detail-name">{detailSkill.name}</div>
                 <div className="skills-detail-category">
                   {detailSkill.category}
+                  {detailSkill.required && (
+                    <span className="skills-required-inline">Required</span>
+                  )}
                 </div>
               </div>
               <div className="skills-detail-actions">
                 <button
                   className="btn btn-secondary btn-sm"
                   onClick={() => handleUninstall(detailSkill.name)}
-                  disabled={actionInProgress === detailSkill.name}
+                  disabled={
+                    detailSkill.required ||
+                    actionInProgress === detailSkill.name
+                  }
+                  title={
+                    detailSkill.required
+                      ? "Required skills cannot be uninstalled"
+                      : undefined
+                  }
                 >
-                  {actionInProgress === detailSkill.name ? (
+                  {detailSkill.required ? (
+                    "Required"
+                  ) : actionInProgress === detailSkill.name ? (
                     t("skills.removing")
                   ) : (
                     <>
@@ -342,6 +357,9 @@ function Skills({ profile }: SkillsProps): React.JSX.Element {
                     {skill.description}
                   </div>
                 )}
+                {skill.required && (
+                  <div className="skills-card-required-badge">Required</div>
+                )}
               </button>
             ))}
           </div>
@@ -400,8 +418,12 @@ function Skills({ profile }: SkillsProps): React.JSX.Element {
                     )}
                   </div>
                   {isInstalled ? (
-                    <span className="skills-card-installed-badge">
-                      {t("skills.installedBadge")}
+                    <span
+                      className={`skills-card-installed-badge ${
+                        skill.required ? "required" : ""
+                      }`}
+                    >
+                      {skill.required ? "Required" : t("skills.installedBadge")}
                     </span>
                   ) : (
                     <button

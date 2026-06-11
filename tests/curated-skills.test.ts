@@ -95,4 +95,43 @@ describe("curated external skills", () => {
     expect(installed).toContain("SkillOpt for Hermes Skills");
     expect(installed).toContain("validation-gated");
   });
+
+  it("auto-installs SkillOpt as a mandatory skill when listing installed skills", async () => {
+    const { listInstalledSkills } = await loadSkillsModule();
+
+    const skills = listInstalledSkills("sleepy");
+
+    expect(skills).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: "skillopt",
+          category: "skill-optimization",
+          required: true,
+        }),
+      ]),
+    );
+    const installed = readFileSync(
+      join(
+        testHome,
+        "profiles",
+        "sleepy",
+        "skills",
+        "skill-optimization",
+        "skillopt",
+        "SKILL.md",
+      ),
+      "utf-8",
+    );
+    expect(installed).toContain("SkillOpt for Hermes Skills");
+  });
+
+  it("prevents uninstalling the mandatory SkillOpt sleep-cycle skill", async () => {
+    const { uninstallSkill } = await loadSkillsModule();
+
+    const result = uninstallSkill("skillopt", "sleepy");
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("mandatory sleep-cycle workflow");
+    expect(result.error).toContain("cannot be uninstalled");
+  });
 });

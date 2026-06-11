@@ -120,6 +120,21 @@ describe("listProfiles", () => {
     expect(profiles.find((p) => p.isDefault)).toBeDefined();
   });
 
+  it("ensures mandatory SkillOpt is present and counted for listed profiles", async () => {
+    const dir = join(PROFILES_DIR, "sleepy");
+    mkdirSync(dir, { recursive: true });
+
+    const profiles = await listProfiles();
+    const found = profiles.find((p) => p.name === "sleepy");
+
+    expect(found?.skillCount).toBe(1);
+    expect(
+      existsSync(
+        join(dir, "skills", "skill-optimization", "skillopt", "SKILL.md"),
+      ),
+    ).toBe(true);
+  });
+
   it("marks the active profile correctly", async () => {
     const dir = join(PROFILES_DIR, "work");
     mkdirSync(dir, { recursive: true });
