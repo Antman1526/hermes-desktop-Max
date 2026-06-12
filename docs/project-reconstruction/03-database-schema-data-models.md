@@ -1,6 +1,6 @@
 # 03 - Database Schema and Data Models
 
-Generated from repository state on 2026-06-11. No secrets are included; environment-variable names are documented without values.
+Generated from repository state on 2026-06-12. No secrets are included; environment-variable names are documented without values.
 
 ## Persistent Stores
 
@@ -325,47 +325,42 @@ The session cache is profile-scoped. Default profile cache lives under `~/.herme
    7 | import {
    8 |   buildLocalModelEntries,
    9 |   discoverLocalModelFiles,
-  10 | } from "./local-model-files";
-  11 |
-  12 | const MODELS_FILE = join(HERMES_HOME, "models.json");
+  10 |   mergeDiscoveredLocalModelEntries,
+  11 | } from "./local-model-files";
+  12 | import { getModelConfig, setModelConfig } from "./config";
   13 |
-  14 | export interface SavedModel {
-  15 |   id: string;
-  16 |   name: string;
-  17 |   provider: string;
-  18 |   model: string;
-  19 |   baseUrl: string;
-  20 |   apiMode?: string | null;
-  21 |   source?: "default" | "custom-provider" | "local-file";
-  22 |   source?: "default" | "custom-provider" | "local-file";
-  23 |   modelPath?: string;
-  24 |   modelRoot?: string;
-  25 |   modelFormat?: "gguf" | "safetensors";
-  26 |   launchable?: boolean;
-  27 |   available?: boolean;
-  28 |   rootAvailable?: boolean;
-  29 |   unavailableReason?: string;
-  30 |   createdAt: number;
-  26 | }
-  27 |
-  28 | export function readModels(): SavedModel[] {
-  29 |   try {
-  30 |     if (!existsSync(MODELS_FILE)) return [];
-  31 |     return JSON.parse(readFileSync(MODELS_FILE, "utf-8"));
-  32 |   } catch {
-  33 |     return [];
-  34 |   }
-  35 | }
-  36 |
-  37 | function writeModels(models: SavedModel[]): void {
-  38 |   safeWriteFile(MODELS_FILE, JSON.stringify(models, null, 2));
-  39 | }
-  40 |
-  41 | interface CustomProviderEntry {
-  42 |   name: string;
-  43 |   provider: string;
-  44 |   model: string;
-  45 |   baseUrl: string;
+  14 | const MODELS_FILE = join(HERMES_HOME, "models.json");
+  15 |
+  16 | export interface SavedModel {
+  17 |   id: string;
+  18 |   name: string;
+  19 |   provider: string;
+  20 |   model: string;
+  21 |   baseUrl: string;
+  22 |   apiMode?: string | null;
+  23 |   source?: "default" | "custom-provider" | "local-file";
+  24 |   modelPath?: string;
+  25 |   modelRoot?: string;
+  26 |   modelFormat?: "gguf" | "safetensors";
+  27 |   launchable?: boolean;
+  28 |   available?: boolean;
+  29 |   rootAvailable?: boolean;
+  30 |   unavailableReason?: string;
+  31 |   createdAt: number;
+  32 | }
+  33 |
+  34 | export function readModels(): SavedModel[] {
+  35 |   try {
+  36 |     if (!existsSync(MODELS_FILE)) return [];
+  37 |     return JSON.parse(readFileSync(MODELS_FILE, "utf-8"));
+  38 |   } catch {
+  39 |     return [];
+  40 |   }
+  41 | }
+  42 |
+  43 | function writeModels(models: SavedModel[]): void {
+  44 |   safeWriteFile(MODELS_FILE, JSON.stringify(models, null, 2));
+  45 | }
 ```
 
 ## JSON Schemas to Recreate
@@ -382,27 +377,8 @@ The session cache is profile-scoped. Default profile cache lives under `~/.herme
     "baseUrl": "http://localhost:8080/v1",
     "source": "local-file",
     "modelPath": "/Users/Antman/Desktop/AI_Models/Qwen-7B.gguf",
-    "modelRoot": "/Users/Antman/Desktop/AI_Models",
     "modelFormat": "gguf",
     "launchable": true,
-    "available": true,
-    "rootAvailable": true,
-    "createdAt": 1760000000000
-  },
-  {
-    "id": "local-file-<sha1-16>",
-    "name": "Local Mixtral 8x7B",
-    "provider": "custom",
-    "model": "/Volumes/MainStore/Development/AI_Models/Mixtral-8x7B.gguf",
-    "baseUrl": "http://localhost:8080/v1",
-    "source": "local-file",
-    "modelPath": "/Volumes/MainStore/Development/AI_Models/Mixtral-8x7B.gguf",
-    "modelRoot": "/Volumes/MainStore/Development/AI_Models",
-    "modelFormat": "gguf",
-    "launchable": true,
-    "available": false,
-    "rootAvailable": false,
-    "unavailableReason": "Model folder is not mounted: /Volumes/MainStore/Development/AI_Models",
     "createdAt": 1760000000000
   }
 ]

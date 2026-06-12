@@ -1,6 +1,6 @@
 # Hermes Desktop Max Reconstruction Documentation
 
-Generated from repository state on 2026-06-11. This folder contains the requested technical documentation pack for recreating and auditing Hermes Desktop Max. It is intended to give another AI system enough implementation context to rebuild the project, reason about architecture, and identify concrete optimization/refactoring opportunities.
+This folder contains the requested technical documentation pack for recreating and auditing Hermes Desktop Max.
 
 ## 15-document reconstruction pack
 
@@ -24,14 +24,6 @@ Generated from repository state on 2026-06-11. This folder contains the requeste
 
 - [AI_REVIEW_PACK.md](./AI_REVIEW_PACK.md) - dense three-page review context with Areas for Review.
 - [TECHNOLOGY_AUDIT.md](./TECHNOLOGY_AUDIT.md) - exhaustive technology/framework/library/tool audit.
-
-## Local downloadable copies
-
-Generated local copies are mirrored outside the repo at:
-
-- `/Users/Antman/Desktop/Hermes_Desktop_Max/project-reconstruction-docs`
-- `/Users/Antman/Desktop/Hermes_Desktop_Max/hermes-desktop-max-documentation-pack.zip`
-- `/Users/Antman/Desktop/Hermes_Desktop_Max/Hermes_Desktop_Max_TECHNOLOGY_AUDIT.md`
 
 ## Rebuild entry point
 

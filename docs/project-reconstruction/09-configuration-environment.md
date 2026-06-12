@@ -1,6 +1,6 @@
 # 09 - Configuration and Environment Variables
 
-Generated from repository state on 2026-06-11. No secrets are included; environment-variable names are documented without values.
+Generated from repository state on 2026-06-12. No secrets are included; environment-variable names are documented without values.
 
 ## Configuration Files
 
@@ -60,14 +60,15 @@ nsis:
 mac:
   artifactName: hermes-desktop-max-${version}-${arch}-${os}.${ext}
   icon: build/icon.icns
+  identity: null
   entitlements: build/entitlements.mac.plist
   entitlementsInherit: build/entitlements.mac.inherit.plist
   extendInfo:
-    - NSCameraUsageDescription: Application requests access to the device's camera.
-    - NSMicrophoneUsageDescription: Application requests access to the device's microphone.
-    - NSDocumentsFolderUsageDescription: Application requests access to the user's Documents folder.
-    - NSDownloadsFolderUsageDescription: Application requests access to the user's Downloads folder.
-  hardenedRuntime: true
+    NSCameraUsageDescription: Application requests access to the device's camera.
+    NSMicrophoneUsageDescription: Application requests access to the device's microphone.
+    NSDocumentsFolderUsageDescription: Application requests access to the user's Documents folder.
+    NSDownloadsFolderUsageDescription: Application requests access to the user's Downloads folder.
+  hardenedRuntime: false
   gatekeeperAssess: false
   notarize: false
 dmg:
@@ -98,6 +99,7 @@ rpm:
   # Same SUID fix for .rpm consumers (Fedora 40+ also restricts userns).
   afterInstall: build/linux-after-install.sh
 npmRebuild: false
+afterPack: build/afterPack.js
 publish:
   provider: github
   owner: Antman1526
@@ -107,54 +109,54 @@ publish:
 ## Desktop Connection Config Shape
 
 ```ts
-  17 | export interface SshConnectionConfig {
-  18 |   host: string;
-  19 |   port: number;
-  20 |   username: string;
-  21 |   keyPath: string;
-  22 |   remotePort: number;
-  23 |   localPort: number;
-  24 | }
-  25 |
-  26 | export interface ConnectionConfig {
-  27 |   mode: "local" | "remote" | "ssh";
-  28 |   remoteUrl: string;
-  29 |   apiKey: string;
-  30 |   ssh: SshConnectionConfig;
-  31 | }
-  32 |
-  33 | export interface PublicConnectionConfig {
-  34 |   mode: "local" | "remote" | "ssh";
-  35 |   remoteUrl: string;
-  36 |   hasApiKey: boolean;
-  37 |   // Length of the stored API key, exposed so the renderer can show a
-  38 |   // mask that matches the real value's width. The secret itself never
-  39 |   // leaves the main process. 0 when no key is set.
-  40 |   apiKeyLength: number;
-  41 |   ssh: SshConnectionConfig;
-  42 | }
-  43 |
-  44 | // Lazy getter — avoids circular dependency with installer.ts
-  45 | // (HERMES_HOME may not be assigned yet when this module first loads)
-  46 | function desktopConfigFile(): string {
-  47 |   return join(HERMES_HOME, "desktop.json");
-  48 | }
-  49 |
-  50 | export function readDesktopConfig(): Record<string, unknown> {
-  51 |   try {
-  52 |     const f = desktopConfigFile();
-  53 |     if (!existsSync(f)) return {};
-  54 |     return JSON.parse(readFileSync(f, "utf-8"));
-  55 |   } catch {
-  56 |     return {};
-  57 |   }
-  58 | }
-  59 |
-  60 | export function writeDesktopConfig(data: Record<string, unknown>): void {
-  61 |   if (!existsSync(HERMES_HOME)) {
-  62 |     mkdirSync(HERMES_HOME, { recursive: true });
-  63 |   }
-  64 |   writeFileSync(desktopConfigFile(), JSON.stringify(data, null, 2), "utf-8");
+  17 |
+  18 | export interface SshConnectionConfig {
+  19 |   host: string;
+  20 |   port: number;
+  21 |   username: string;
+  22 |   keyPath: string;
+  23 |   remotePort: number;
+  24 |   localPort: number;
+  25 | }
+  26 |
+  27 | export interface ConnectionConfig {
+  28 |   mode: "local" | "remote" | "ssh";
+  29 |   remoteUrl: string;
+  30 |   apiKey: string;
+  31 |   ssh: SshConnectionConfig;
+  32 | }
+  33 |
+  34 | export interface PublicConnectionConfig {
+  35 |   mode: "local" | "remote" | "ssh";
+  36 |   remoteUrl: string;
+  37 |   hasApiKey: boolean;
+  38 |   // Length of the stored API key, exposed so the renderer can show a
+  39 |   // mask that matches the real value's width. The secret itself never
+  40 |   // leaves the main process. 0 when no key is set.
+  41 |   apiKeyLength: number;
+  42 |   ssh: SshConnectionConfig;
+  43 | }
+  44 |
+  45 | // Lazy getter — avoids circular dependency with installer.ts
+  46 | // (HERMES_HOME may not be assigned yet when this module first loads)
+  47 | function desktopConfigFile(): string {
+  48 |   return join(HERMES_HOME, "desktop.json");
+  49 | }
+  50 |
+  51 | export function readDesktopConfig(): Record<string, unknown> {
+  52 |   try {
+  53 |     const f = desktopConfigFile();
+  54 |     if (!existsSync(f)) return {};
+  55 |     return JSON.parse(readFileSync(f, "utf-8"));
+  56 |   } catch {
+  57 |     return {};
+  58 |   }
+  59 | }
+  60 |
+  61 | export function writeDesktopConfig(data: Record<string, unknown>): void {
+  62 |   if (!existsSync(HERMES_HOME)) {
+  63 |     mkdirSync(HERMES_HOME, { recursive: true });
+  64 |   }
 ```
 
 ## Environment Variable Categories
@@ -184,71 +186,71 @@ publish:
 Environment keys must match `/^[A-Za-z_][A-Za-z0-9_]*$/` and values must be single-line strings.
 
 ```ts
- 114 |   if (existing.mode === mode && existing.remoteUrl === remoteUrl) {
- 115 |     return existing.apiKey;
- 116 |   }
- 117 |   return "";
- 118 | }
- 119 |
- 120 | // ── In-memory cache with TTL ─────────────────────────────
- 121 | const CACHE_TTL = 5000; // 5 seconds
- 122 | const _cache = new Map<string, { data: unknown; ts: number }>();
- 123 | const ENV_KEY_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
- 124 |
- 125 | function getCached<T>(key: string): T | undefined {
- 126 |   const entry = _cache.get(key);
- 127 |   if (!entry) return undefined;
- 128 |   if (Date.now() - entry.ts > CACHE_TTL) {
- 129 |     _cache.delete(key);
- 130 |     return undefined;
- 131 |   }
- 132 |   return entry.data as T;
- 133 | }
- 134 |
- 135 | function setCache(key: string, data: unknown): void {
- 136 |   _cache.set(key, { data, ts: Date.now() });
- 137 | }
- 138 |
- 139 | function invalidateCache(prefix: string): void {
- 140 |   for (const key of _cache.keys()) {
- 141 |     if (key.startsWith(prefix)) _cache.delete(key);
- 142 |   }
- 143 | }
- 144 |
- 145 | export function readEnv(profile?: string): Record<string, string> {
- 146 |   const cacheKey = `env:${profile || "default"}`;
- 147 |   const cached = getCached<Record<string, string>>(cacheKey);
- 148 |   if (cached) return cached;
- 149 |
- 150 |   const { envFile } = profilePaths(profile);
- 151 |   if (!existsSync(envFile)) return {};
- 152 |
- 153 |   const content = readFileSync(envFile, "utf-8");
- 154 |   const result: Record<string, string> = {};
+ 114 |       keyPath: (ssh.keyPath as string) || "",
+ 115 |       remotePort: (ssh.remotePort as number) || 8642,
+ 116 |       localPort: (ssh.localPort as number) || 18642,
+ 117 |     },
+ 118 |   };
+ 119 | }
+ 120 |
+ 121 | export function getPublicConnectionConfig(): PublicConnectionConfig {
+ 122 |   const config = getConnectionConfig();
+ 123 |   return {
+ 124 |     mode: config.mode,
+ 125 |     remoteUrl: config.remoteUrl,
+ 126 |     hasApiKey: config.apiKey.length > 0,
+ 127 |     apiKeyLength: config.apiKey.length,
+ 128 |     ssh: config.ssh,
+ 129 |   };
+ 130 | }
+ 131 |
+ 132 | export function setConnectionConfig(config: ConnectionConfig): void {
+ 133 |   const data = readDesktopConfig();
+ 134 |   data.connectionMode = config.mode;
+ 135 |   data.remoteUrl = config.remoteUrl;
+ 136 |   data.remoteApiKey = config.apiKey;
+ 137 |   if (config.mode === "ssh") {
+ 138 |     data.sshConfig = config.ssh;
+ 139 |   }
+ 140 |   writeDesktopConfig(data);
+ 141 | }
+ 142 |
+ 143 | export function resolveConnectionApiKeyUpdate(
+ 144 |   existing: ConnectionConfig,
+ 145 |   mode: "local" | "remote" | "ssh",
+ 146 |   remoteUrl: string,
+ 147 |   apiKey?: string,
+ 148 | ): string {
+ 149 |   if (apiKey !== undefined) return apiKey;
+ 150 |   if (existing.mode === mode && existing.remoteUrl === remoteUrl) {
+ 151 |     return existing.apiKey;
+ 152 |   }
+ 153 |   return "";
+ 154 | }
  155 |
- 156 |   for (const line of content.split("\n")) {
- 157 |     const trimmed = line.trim();
- 158 |     if (trimmed.startsWith("#") || !trimmed.includes("=")) continue;
- 159 |
- 160 |     const eqIndex = trimmed.indexOf("=");
- 161 |     const key = trimmed.substring(0, eqIndex).trim();
- 162 |     let value = trimmed.substring(eqIndex + 1).trim();
- 163 |
- 164 |     if (
- 165 |       (value.startsWith('"') && value.endsWith('"')) ||
- 166 |       (value.startsWith("'") && value.endsWith("'"))
- 167 |     ) {
- 168 |       value = value.slice(1, -1);
- 169 |     }
+ 156 | // ── In-memory cache with TTL ─────────────────────────────
+ 157 | const CACHE_TTL = 5000; // 5 seconds
+ 158 | const _cache = new Map<string, { data: unknown; ts: number }>();
+ 159 | const ENV_KEY_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
+ 160 |
+ 161 | function getCached<T>(key: string): T | undefined {
+ 162 |   const entry = _cache.get(key);
+ 163 |   if (!entry) return undefined;
+ 164 |   if (Date.now() - entry.ts > CACHE_TTL) {
+ 165 |     _cache.delete(key);
+ 166 |     return undefined;
+ 167 |   }
+ 168 |   return entry.data as T;
+ 169 | }
  170 |
- 171 |     result[key] = value;
- 172 |   }
- 173 |
- 174 |   setCache(cacheKey, result);
- 175 |   return result;
- 176 | }
- 177 |
- 178 | export function setEnvValue(
+ 171 | function setCache(key: string, data: unknown): void {
+ 172 |   _cache.set(key, { data, ts: Date.now() });
+ 173 | }
+ 174 |
+ 175 | function invalidateCache(prefix: string): void {
+ 176 |   for (const key of _cache.keys()) {
+ 177 |     if (key.startsWith(prefix)) _cache.delete(key);
+ 178 |   }
 ```
 
 ## Areas for Review

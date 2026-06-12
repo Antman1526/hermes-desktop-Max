@@ -1,6 +1,6 @@
 # 12 - Error Handling and Logging
 
-Generated from repository state on 2026-06-11. No secrets are included; environment-variable names are documented without values.
+Generated from repository state on 2026-06-12. No secrets are included; environment-variable names are documented without values.
 
 ## Error Handling Patterns
 
@@ -15,27 +15,7 @@ The project uses pragmatic error handling:
 ## Global Main Guard
 
 ```ts
- 190 |   sshListInstalledSkills,
- 191 |   sshGetSkillContent,
- 192 |   sshInstallSkill,
- 193 |   sshUninstallSkill,
- 194 |   sshListBundledSkills,
- 195 |   sshReadMemory,
- 196 |   sshAddMemoryEntry,
- 197 |   sshUpdateMemoryEntry,
- 198 |   sshRemoveMemoryEntry,
- 199 |   sshWriteUserProfile,
- 200 |   sshReadSoul,
- 201 |   sshWriteSoul,
- 202 |   sshResetSoul,
- 203 |   sshGetToolsets,
- 204 |   sshSetToolsetEnabled,
- 205 |   sshReadEnv,
- 206 |   sshSetEnvValue,
- 207 |   sshGetConfigValue,
- 208 |   sshSetConfigValue,
- 209 |   sshGetHermesHome,
- 210 |   sshGetModelConfig,
+
 ```
 
 ## Config Read Defaults
@@ -43,80 +23,80 @@ The project uses pragmatic error handling:
 `readDesktopConfig` intentionally swallows parse/read errors and returns an empty object so startup survives bad config.
 
 ```ts
-  47 |   return join(HERMES_HOME, "desktop.json");
-  48 | }
-  49 |
-  50 | export function readDesktopConfig(): Record<string, unknown> {
-  51 |   try {
-  52 |     const f = desktopConfigFile();
-  53 |     if (!existsSync(f)) return {};
-  54 |     return JSON.parse(readFileSync(f, "utf-8"));
-  55 |   } catch {
-  56 |     return {};
-  57 |   }
-  58 | }
-  59 |
-  60 | export function writeDesktopConfig(data: Record<string, unknown>): void {
-  61 |   if (!existsSync(HERMES_HOME)) {
-  62 |     mkdirSync(HERMES_HOME, { recursive: true });
-  63 |   }
-  64 |   writeFileSync(desktopConfigFile(), JSON.stringify(data, null, 2), "utf-8");
+  47 | function desktopConfigFile(): string {
+  48 |   return join(HERMES_HOME, "desktop.json");
+  49 | }
+  50 |
+  51 | export function readDesktopConfig(): Record<string, unknown> {
+  52 |   try {
+  53 |     const f = desktopConfigFile();
+  54 |     if (!existsSync(f)) return {};
+  55 |     return JSON.parse(readFileSync(f, "utf-8"));
+  56 |   } catch {
+  57 |     return {};
+  58 |   }
+  59 | }
+  60 |
+  61 | export function writeDesktopConfig(data: Record<string, unknown>): void {
+  62 |   if (!existsSync(HERMES_HOME)) {
+  63 |     mkdirSync(HERMES_HOME, { recursive: true });
+  64 |   }
 ```
 
 ## Paperclip Error Pattern
 
 ```ts
- 168 |   return { available: false, detail: null };
- 169 | }
- 170 |
- 171 | export async function getPaperclipStatus(): Promise<PaperclipStatus> {
- 172 |   const config = getPaperclipConfig();
- 173 |   const [healthy, launcher] = await Promise.all([
- 174 |     requestHealth(config.serverUrl),
- 175 |     getLauncherInfo(),
- 176 |   ]);
- 177 |   const managed = Boolean(paperclipProcess && !paperclipProcess.killed);
- 178 |
- 179 |   return {
- 180 |     serverUrl: config.serverUrl,
- 181 |     running: healthy,
- 182 |     managed,
- 183 |     launcherAvailable: launcher.available,
- 184 |     launcherDetail: launcher.detail,
- 185 |     health: healthy ? "ok" : "unreachable",
- 186 |   };
- 187 | }
- 188 |
- 189 | export async function startPaperclip(): Promise<{
- 190 |   success: boolean;
- 191 |   error?: string;
- 192 | }> {
- 193 |   const status = await getPaperclipStatus();
- 194 |   if (status.running) return { success: true };
- 195 |   if (!status.launcherAvailable) {
- 196 |     return {
- 197 |       success: false,
- 198 |       error:
- 199 |         "Paperclip launcher not found. Install Node.js/npm so npx is available.",
- 200 |     };
- 201 |   }
- 202 |
- 203 |   const config = getPaperclipConfig();
- 204 |   const env: NodeJS.ProcessEnv = {
- 205 |     ...process.env,
- 206 |     PATH: getEnhancedPath(),
- 207 |   };
- 208 |   if (config.telemetryDisabled) {
- 209 |     env.PAPERCLIP_TELEMETRY_DISABLED = "1";
- 210 |     env.DO_NOT_TRACK = "1";
- 211 |   }
- 212 |
- 213 |   paperclipProcess = spawn("npx", ["paperclipai", "run"], {
- 214 |     env,
- 215 |     stdio: "ignore",
- 216 |     detached: false,
- 217 |   });
- 218 |   paperclipProcess.unref();
+ 168 |             res.statusCode >= 300
+ 169 |           ) {
+ 170 |             resolve(false);
+ 171 |             return;
+ 172 |           }
+ 173 |           try {
+ 174 |             const parsed = JSON.parse(body) as { status?: unknown };
+ 175 |             resolve(parsed.status === "ok");
+ 176 |           } catch {
+ 177 |             resolve(false);
+ 178 |           }
+ 179 |         });
+ 180 |       },
+ 181 |     );
+ 182 |     req.on("error", () => resolve(false));
+ 183 |     req.on("timeout", () => {
+ 184 |       req.destroy();
+ 185 |       resolve(false);
+ 186 |     });
+ 187 |     req.end();
+ 188 |   });
+ 189 | }
+ 190 |
+ 191 | function execFileOutput(
+ 192 |   command: string,
+ 193 |   args: string[],
+ 194 |   timeout = 5000,
+ 195 | ): Promise<{ ok: boolean; output: string; error: string | null }> {
+ 196 |   return new Promise((resolve) => {
+ 197 |     execFile(
+ 198 |       command,
+ 199 |       args,
+ 200 |       {
+ 201 |         env: { ...process.env, PATH: getEnhancedPath() },
+ 202 |         timeout,
+ 203 |       },
+ 204 |       (error, stdout, stderr) => {
+ 205 |         resolve({
+ 206 |           ok: !error,
+ 207 |           output: (stdout || stderr || "").toString().trim(),
+ 208 |           error: error ? error.message : null,
+ 209 |         });
+ 210 |       },
+ 211 |     );
+ 212 |   });
+ 213 | }
+ 214 |
+ 215 | export function resolvePaperclipNpxCommand(
+ 216 |   fileExists: (path: string) => boolean = existsSync,
+ 217 | ): string {
+ 218 |   for (const candidate of PAPERCLIP_NPX_CANDIDATES) {
 ```
 
 ## Logging
@@ -137,7 +117,7 @@ Log sources:
 2. Use Settings log viewer for gateway/agent logs.
 3. Run `runHermesDoctor` from Settings or `window.hermesAPI.runHermesDoctor()`.
 4. Check `desktop.json`, `.env`, `config.yaml`, and `models.json`.
-5. For local model issues, check `local-model-server.pid`, `local-model-server-model`, `local-model-server-port`, `llama-server` availability, and `http://127.0.0.1:<port>/v1/models`. The launcher starts at `8080` but may use any free port through `8099`. If the app reports `llama-server was not found`, install llama.cpp with `brew install llama.cpp` or place a `llama-server` binary on PATH.
+5. For local model issues, check `local-model-server.pid`, `local-model-server-model`, `local-model-server-port`, `llama-server` availability, and `http://127.0.0.1:<port>/v1/models`.
 
 ## Areas for Review
 

@@ -1,6 +1,6 @@
 # 11 - Build and Deployment Pipeline
 
-Generated from repository state on 2026-06-11. No secrets are included; environment-variable names are documented without values.
+Generated from repository state on 2026-06-12. No secrets are included; environment-variable names are documented without values.
 
 ## Build Scripts
 
@@ -35,8 +35,8 @@ Generated from repository state on 2026-06-11. No secrets are included; environm
 
 ## Packaging Targets
 
-- macOS: ARM64 DMG, hardened runtime, entitlements, notarization disabled for local developer packaging.
-- Windows: NSIS setup and portable executable, `hermes-desktop-max.exe`.
+- macOS: DMG, hardened runtime, entitlements, notarization enabled by config.
+- Windows: NSIS setup and portable executable, `hermes-agent.exe`.
 - Linux: AppImage, Snap, Deb, RPM.
 
 ## Packaging Configuration
@@ -83,14 +83,15 @@ nsis:
 mac:
   artifactName: hermes-desktop-max-${version}-${arch}-${os}.${ext}
   icon: build/icon.icns
+  identity: null
   entitlements: build/entitlements.mac.plist
   entitlementsInherit: build/entitlements.mac.inherit.plist
   extendInfo:
-    - NSCameraUsageDescription: Application requests access to the device's camera.
-    - NSMicrophoneUsageDescription: Application requests access to the device's microphone.
-    - NSDocumentsFolderUsageDescription: Application requests access to the user's Documents folder.
-    - NSDownloadsFolderUsageDescription: Application requests access to the user's Downloads folder.
-  hardenedRuntime: true
+    NSCameraUsageDescription: Application requests access to the device's camera.
+    NSMicrophoneUsageDescription: Application requests access to the device's microphone.
+    NSDocumentsFolderUsageDescription: Application requests access to the user's Documents folder.
+    NSDownloadsFolderUsageDescription: Application requests access to the user's Downloads folder.
+  hardenedRuntime: false
   gatekeeperAssess: false
   notarize: false
 dmg:
@@ -121,6 +122,7 @@ rpm:
   # Same SUID fix for .rpm consumers (Fedora 40+ also restricts userns).
   afterInstall: build/linux-after-install.sh
 npmRebuild: false
+afterPack: build/afterPack.js
 publish:
   provider: github
   owner: Antman1526
@@ -136,8 +138,7 @@ publish:
 Local build machines without signing credentials can produce artifacts by overriding code signing/notarization:
 
 ```bash
-npm run build:mac
-CSC_IDENTITY_AUTO_DISCOVERY=false npm run build:mac
+CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac dmg --arm64 --publish never -c.mac.notarize=false
 CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --win nsis --x64 --publish never
 ```
 
@@ -147,8 +148,7 @@ Unsigned artifacts install but trigger Gatekeeper/SmartScreen warnings.
 
 Expected artifact names:
 
-- `hermes-desktop-max-0.5.2-arm64.dmg`
-- `Hermes Desktop Max.app`
+- `hermes-desktop-0.5.2-arm64.dmg`
 - `hermes-desktop-0.5.2-setup.exe`
 - `hermes-desktop-0.5.2-portable.exe`
 - `hermes-desktop-0.5.2.AppImage`
@@ -158,4 +158,5 @@ Expected artifact names:
 ## Areas for Review
 
 - Should the project add CI jobs for typecheck/test/package matrix?
+- Should GitHub publishing point to `Antman1526/hermes-desktop-Max` for this fork instead of upstream `fathah/hermes-desktop`?
 - Should package artifacts include SBOM/checksums for local install verification?

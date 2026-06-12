@@ -1,6 +1,6 @@
 # 05 - Frontend Architecture and Components
 
-Generated from repository state on 2026-06-11. No secrets are included; environment-variable names are documented without values.
+Generated from repository state on 2026-06-12. No secrets are included; environment-variable names are documented without values.
 
 ## Renderer Stack
 
@@ -216,7 +216,7 @@ Chat is decomposed into display components, input components, hooks, and utiliti
 - `Chat.tsx` coordinates state and flow.
 - `ChatInput.tsx` manages text, attachments, slash commands, and keyboard actions.
 - `MessageList.tsx` and `MessageRow.tsx` render transcript items.
-- `ModelPicker.tsx` selects provider/model, disables unavailable local-file entries, and triggers local server startup for launchable GGUF models.
+- `ModelPicker.tsx` selects provider/model and triggers local server startup for launchable models.
 - `useChatIPC.ts` wraps main-process chat calls.
 - `useModelConfig.ts` loads/saves model config.
 
@@ -228,160 +228,141 @@ Representative hook:
    3 | import { useI18n } from "../../../components/useI18n";
    4 | import type { ModelGroup } from "../types";
    5 |
-   6 | interface UseModelConfigResult {
-   7 |   currentModel: string;
-   8 |   currentProvider: string;
-   9 |   currentBaseUrl: string;
-  10 |   modelGroups: ModelGroup[];
-  11 |   displayModel: string;
-  12 |   reload: () => Promise<void>;
-  13 |   selectModel: (
-  14 |     provider: string,
-  15 |     model: string,
-  16 |     baseUrl: string,
-  17 |     options?: {
-  18 |       launchable?: boolean;
-  19 |       modelPath?: string;
-  20 |       available?: boolean;
-  21 |       unavailableReason?: string;
-  22 |     },
-  18 |   ) => Promise<void>;
-  19 | }
-  20 |
-  21 | function groupModelsByProvider(
-  22 |   models: {
-  23 |     provider: string;
-  24 |     model: string;
-  25 |     name: string;
-  26 |     baseUrl?: string;
-  27 |     source?: "default" | "custom-provider" | "local-file";
-  28 |     modelPath?: string;
-  29 |     modelRoot?: string;
-  30 |     modelFormat?: "gguf" | "safetensors";
-  31 |     launchable?: boolean;
-  32 |     available?: boolean;
-  33 |     rootAvailable?: boolean;
-  34 |     unavailableReason?: string;
-  31 |   }[],
-  32 | ): ModelGroup[] {
-  33 |   const groupMap = new Map<string, ModelGroup>();
-  34 |   for (const m of models) {
-  35 |     if (!groupMap.has(m.provider)) {
-  36 |       groupMap.set(m.provider, {
-  37 |         provider: m.provider,
-  38 |         providerLabel: PROVIDERS.labels[m.provider] || m.provider,
-  39 |         models: [],
-  40 |       });
-  41 |     }
-  42 |     groupMap.get(m.provider)!.models.push({
-  43 |       provider: m.provider,
-  44 |       model: m.model,
-  45 |       label: m.name,
-  46 |       baseUrl: m.baseUrl || "",
-  47 |       source: m.source,
-  48 |       modelPath: m.modelPath,
-  49 |       modelRoot: m.modelRoot,
-  50 |       modelFormat: m.modelFormat,
-  51 |       launchable: m.launchable,
-  52 |       available: m.available,
-  53 |       rootAvailable: m.rootAvailable,
-  54 |       unavailableReason: m.unavailableReason,
-  51 |     });
-  52 |   }
-  53 |   return Array.from(groupMap.values());
-  54 | }
-  55 |
-  56 | export function useModelConfig(profile?: string): UseModelConfigResult {
-  57 |   const { t } = useI18n();
-  58 |   const [currentModel, setCurrentModel] = useState("");
-  59 |   const [currentProvider, setCurrentProvider] = useState("auto");
-  60 |   const [currentBaseUrl, setCurrentBaseUrl] = useState("");
-  61 |   const [modelGroups, setModelGroups] = useState<ModelGroup[]>([]);
-  62 |
-  63 |   const reload = useCallback(async (): Promise<void> => {
-  64 |     const [mc, savedModels] = await Promise.all([
-  65 |       window.hermesAPI.getModelConfig(profile),
-  66 |       window.hermesAPI.listModels(),
-  67 |     ]);
-  68 |     setCurrentModel(mc.model);
-  69 |     setCurrentProvider(mc.provider);
-  70 |     setCurrentBaseUrl(mc.baseUrl);
-  71 |     setModelGroups(groupModelsByProvider(savedModels));
-  72 |   }, [profile]);
-  73 |
-  74 |   // Initial load + reload whenever the profile changes (canonical
-  75 |   // load-on-mount; setState happens inside `reload` via an awaited IPC call).
-  76 |   useEffect(() => {
-  77 |     reload();
-  78 |   }, [reload]);
-  79 |
-  80 |   const selectModel = useCallback(
-  81 |     async (
-  82 |       provider: string,
-  83 |       model: string,
-  84 |       baseUrl: string,
-  85 |       options?: {
-  86 |         launchable?: boolean;
-  87 |         modelPath?: string;
-  88 |         available?: boolean;
-  89 |         unavailableReason?: string;
-  90 |       },
-  86 |     ): Promise<void> => {
-  87 |       // Named providers (deepseek, groq, anthropic, …) have a hardcoded
-  88 |       // canonical base_url in `hermes-agent`'s PROVIDER_REGISTRY.  A stored
-  89 |       // model entry that carries a stale `baseUrl` from an earlier confused
-  90 |       // save (e.g. a deepseek-tagged entry whose baseUrl points at the codex
-  91 |       // endpoint) would route the request to the wrong host.  Drop the
-  92 |       // baseUrl whenever the entry isn't `custom`; the gateway falls back
-  93 |       // to the provider's canonical URL.
-  94 |       let effectiveBaseUrl = provider === "custom" ? baseUrl : "";
-  95 |       if (options?.available === false) {
-  96 |         // Intent: keep unavailable local models visible, but prevent routing chat to dead files.
-  97 |         throw new Error(
-  98 |           options.unavailableReason || "Local model is unavailable.",
-  99 |         );
- 100 |       }
- 101 |       if (options?.launchable && options.modelPath) {
- 102 |         const status = await window.hermesAPI.startLocalModelServer(
- 103 |           options.modelPath,
- 104 |         );
- 105 |         if (status.error) throw new Error(status.error);
- 106 |         effectiveBaseUrl = status.baseUrl;
- 107 |       }
- 108 |       await window.hermesAPI.setModelConfig(
- 102 |         provider,
- 103 |         model,
- 104 |         effectiveBaseUrl,
- 105 |         profile,
- 106 |       );
- 107 |       setCurrentModel(model);
- 108 |       setCurrentProvider(provider);
- 109 |       setCurrentBaseUrl(effectiveBaseUrl);
- 110 |     },
- 111 |     [profile],
- 112 |   );
- 113 |
- 114 |   const displayModel = useMemo(
- 115 |     () =>
- 116 |       currentModel
- 117 |         ? currentModel.split("/").pop() || currentModel
- 118 |         : currentProvider === "auto"
- 119 |           ? t("chat.auto")
- 120 |           : t("chat.noModel"),
- 121 |     [currentModel, currentProvider, t],
- 122 |   );
- 123 |
- 124 |   return {
- 125 |     currentModel,
- 126 |     currentProvider,
- 127 |     currentBaseUrl,
- 128 |     modelGroups,
- 129 |     displayModel,
- 130 |     reload,
- 131 |     selectModel,
- 132 |   };
- 133 | }
- 134 |
+   6 | export interface LocalModelReadiness {
+   7 |   state: "idle" | "starting" | "ready" | "error";
+   8 |   message?: string;
+   9 | }
+  10 |
+  11 | interface UseModelConfigResult {
+  12 |   currentModel: string;
+  13 |   currentProvider: string;
+  14 |   currentBaseUrl: string;
+  15 |   modelGroups: ModelGroup[];
+  16 |   displayModel: string;
+  17 |   localModelReadiness: LocalModelReadiness;
+  18 |   reload: () => Promise<void>;
+  19 |   selectModel: (
+  20 |     provider: string,
+  21 |     model: string,
+  22 |     baseUrl: string,
+  23 |     options?: {
+  24 |       launchable?: boolean;
+  25 |       modelPath?: string;
+  26 |       available?: boolean;
+  27 |       unavailableReason?: string;
+  28 |     },
+  29 |   ) => Promise<void>;
+  30 | }
+  31 |
+  32 | function groupModelsByProvider(
+  33 |   models: {
+  34 |     provider: string;
+  35 |     model: string;
+  36 |     name: string;
+  37 |     baseUrl?: string;
+  38 |     source?: "default" | "custom-provider" | "local-file";
+  39 |     modelPath?: string;
+  40 |     modelRoot?: string;
+  41 |     modelFormat?: "gguf" | "safetensors";
+  42 |     launchable?: boolean;
+  43 |     available?: boolean;
+  44 |     rootAvailable?: boolean;
+  45 |     unavailableReason?: string;
+  46 |   }[],
+  47 | ): ModelGroup[] {
+  48 |   const groupMap = new Map<string, ModelGroup>();
+  49 |   for (const m of models) {
+  50 |     if (!groupMap.has(m.provider)) {
+  51 |       groupMap.set(m.provider, {
+  52 |         provider: m.provider,
+  53 |         providerLabel: PROVIDERS.labels[m.provider] || m.provider,
+  54 |         models: [],
+  55 |       });
+  56 |     }
+  57 |     groupMap.get(m.provider)!.models.push({
+  58 |       provider: m.provider,
+  59 |       model: m.model,
+  60 |       label: m.name,
+  61 |       baseUrl: m.baseUrl || "",
+  62 |       source: m.source,
+  63 |       modelPath: m.modelPath,
+  64 |       modelRoot: m.modelRoot,
+  65 |       modelFormat: m.modelFormat,
+  66 |       launchable: m.launchable,
+  67 |       available: m.available,
+  68 |       rootAvailable: m.rootAvailable,
+  69 |       unavailableReason: m.unavailableReason,
+  70 |     });
+  71 |   }
+  72 |   return Array.from(groupMap.values());
+  73 | }
+  74 |
+  75 | export function useModelConfig(profile?: string): UseModelConfigResult {
+  76 |   const { t } = useI18n();
+  77 |   const [currentModel, setCurrentModel] = useState("");
+  78 |   const [currentProvider, setCurrentProvider] = useState("auto");
+  79 |   const [currentBaseUrl, setCurrentBaseUrl] = useState("");
+  80 |   const [modelGroups, setModelGroups] = useState<ModelGroup[]>([]);
+  81 |   const [localModelReadiness, setLocalModelReadiness] =
+  82 |     useState<LocalModelReadiness>({
+  83 |       state: "idle",
+  84 |     });
+  85 |
+  86 |   const reload = useCallback(async (): Promise<void> => {
+  87 |     const [mc, savedModels] = await Promise.all([
+  88 |       window.hermesAPI.getModelConfig(profile),
+  89 |       window.hermesAPI.listModels(),
+  90 |     ]);
+  91 |     setCurrentModel(mc.model);
+  92 |     setCurrentProvider(mc.provider);
+  93 |     setCurrentBaseUrl(mc.baseUrl);
+  94 |     setModelGroups(groupModelsByProvider(savedModels));
+  95 |   }, [profile]);
+  96 |
+  97 |   // Initial load + reload whenever the profile changes (canonical
+  98 |   // load-on-mount; setState happens inside `reload` via an awaited IPC call).
+  99 |   useEffect(() => {
+ 100 |     reload();
+ 101 |   }, [reload]);
+ 102 |
+ 103 |   const selectModel = useCallback(
+ 104 |     async (
+ 105 |       provider: string,
+ 106 |       model: string,
+ 107 |       baseUrl: string,
+ 108 |       options?: {
+ 109 |         launchable?: boolean;
+ 110 |         modelPath?: string;
+ 111 |         available?: boolean;
+ 112 |         unavailableReason?: string;
+ 113 |       },
+ 114 |     ): Promise<void> => {
+ 115 |       // Named providers (deepseek, groq, anthropic, …) have a hardcoded
+ 116 |       // canonical base_url in `hermes-agent`'s PROVIDER_REGISTRY.  A stored
+ 117 |       // model entry that carries a stale `baseUrl` from an earlier confused
+ 118 |       // save (e.g. a deepseek-tagged entry whose baseUrl points at the codex
+ 119 |       // endpoint) would route the request to the wrong host.  Drop the
+ 120 |       // baseUrl whenever the entry isn't `custom`; the gateway falls back
+ 121 |       // to the provider's canonical URL.
+ 122 |       let effectiveBaseUrl = provider === "custom" ? baseUrl : "";
+ 123 |       if (options?.available === false) {
+ 124 |         setLocalModelReadiness({
+ 125 |           state: "error",
+ 126 |           message: options.unavailableReason || "Local model is unavailable.",
+ 127 |         });
+ 128 |         return;
+ 129 |       }
+ 130 |       if (options?.launchable && options.modelPath) {
+ 131 |         setLocalModelReadiness({
+ 132 |           state: "starting",
+ 133 |           message: "Starting local model server...",
+ 134 |         });
+ 135 |         const status = await window.hermesAPI.startLocalModelServer(
+ 136 |           options.modelPath,
+ 137 |         );
+ 138 |         if (status.error) {
+ 139 |           setLocalModelReadiness({
+ 140 |             state: "error",
 ```
 
 ## Paperclip Screen Pattern
@@ -395,130 +376,130 @@ The Paperclip screen is a compact example of renderer to IPC flow: load status/c
    4 |
    5 | interface PaperclipConfig {
    6 |   serverUrl: string;
-   7 |   telemetryDisabled: boolean;
-   8 | }
-   9 |
-  10 | interface PaperclipStatus {
-  11 |   serverUrl: string;
-  12 |   running: boolean;
-  13 |   managed: boolean;
-  14 |   launcherAvailable: boolean;
-  15 |   launcherDetail: string | null;
-  16 |   health: "ok" | "unreachable";
-  17 | }
-  18 |
-  19 | function Paperclip(): React.JSX.Element {
-  20 |   const { t } = useI18n();
-  21 |   const [config, setConfig] = useState<PaperclipConfig>({
-  22 |     serverUrl: "http://127.0.0.1:3100",
-  23 |     telemetryDisabled: true,
-  24 |   });
-  25 |   const [status, setStatus] = useState<PaperclipStatus | null>(null);
-  26 |   const [loading, setLoading] = useState(true);
-  27 |   const [saving, setSaving] = useState(false);
-  28 |   const [action, setAction] = useState<"starting" | "stopping" | null>(null);
-  29 |   const [message, setMessage] = useState<string | null>(null);
-  30 |   const [messageType, setMessageType] = useState<"success" | "error">(
-  31 |     "success",
-  32 |   );
-  33 |
-  34 |   const refresh = useCallback(async (): Promise<void> => {
-  35 |     const nextStatus = await window.hermesAPI.paperclipStatus();
-  36 |     setStatus(nextStatus);
-  37 |   }, []);
-  38 |
-  39 |   useEffect(() => {
-  40 |     let mounted = true;
-  41 |     Promise.all([
-  42 |       window.hermesAPI.getPaperclipConfig(),
-  43 |       window.hermesAPI.paperclipStatus(),
-  44 |     ])
-  45 |       .then(([nextConfig, nextStatus]) => {
-  46 |         if (!mounted) return;
-  47 |         setConfig(nextConfig);
-  48 |         setStatus(nextStatus);
-  49 |       })
-  50 |       .finally(() => {
-  51 |         if (mounted) setLoading(false);
-  52 |       });
-  53 |     return () => {
-  54 |       mounted = false;
-  55 |     };
-  56 |   }, []);
-  57 |
-  58 |   async function handleSave(): Promise<void> {
-  59 |     setSaving(true);
-  60 |     setMessage(null);
-  61 |     try {
-  62 |       const next = await window.hermesAPI.setPaperclipConfig(config);
-  63 |       setConfig(next);
-  64 |       await refresh();
-  65 |       setMessageType("success");
-  66 |       setMessage(t("paperclip.saved"));
-  67 |     } catch (err) {
-  68 |       setMessageType("error");
-  69 |       setMessage((err as Error).message);
-  70 |     } finally {
-  71 |       setSaving(false);
-  72 |     }
-  73 |   }
-  74 |
-  75 |   async function handleStart(): Promise<void> {
-  76 |     setAction("starting");
-  77 |     setMessage(null);
-  78 |     const result = await window.hermesAPI.startPaperclip();
-  79 |     await refresh();
-  80 |     if (result.success) {
-  81 |       await window.hermesAPI.openPaperclip();
-  82 |     }
-  83 |     setAction(null);
-  84 |     setMessageType(result.success ? "success" : "error");
-  85 |     setMessage(
-  86 |       result.success
-  87 |         ? t("paperclip.started")
-  88 |         : result.error || t("paperclip.startFailed"),
-  89 |     );
-  90 |   }
-  91 |
-  92 |   async function handleStop(): Promise<void> {
-  93 |     setAction("stopping");
-  94 |     setMessage(null);
-  95 |     const result = await window.hermesAPI.stopPaperclip();
-  96 |     await refresh();
-  97 |     setAction(null);
-  98 |     setMessageType(result.success ? "success" : "error");
-  99 |     setMessage(
- 100 |       result.success
- 101 |         ? t("paperclip.stopped")
- 102 |         : result.error || t("paperclip.stopFailed"),
- 103 |     );
- 104 |   }
- 105 |
- 106 |   const running = status?.running ?? false;
- 107 |   const managed = status?.managed ?? false;
- 108 |
- 109 |   return (
- 110 |     <div className="settings-container">
- 111 |       <h1 className="settings-header">{t("paperclip.title")}</h1>
- 112 |
- 113 |       <div className="settings-section">
- 114 |         <div className="settings-section-title">{t("paperclip.status")}</div>
- 115 |         {loading ? (
- 116 |           <div className="settings-field-value">{t("common.loading")}</div>
- 117 |         ) : (
- 118 |           <>
- 119 |             <div className="settings-field">
- 120 |               <label className="settings-field-label">
- 121 |                 {t("paperclip.server")}
- 122 |               </label>
- 123 |               <div className="settings-field-value">
- 124 |                 {status?.serverUrl || config.serverUrl}
- 125 |               </div>
- 126 |             </div>
- 127 |             <div className="settings-field">
- 128 |               <label className="settings-field-label">
- 129 |                 {t("paperclip.health")}
- 130 |               </label>
+   7 |   autoStart: boolean;
+   8 |   telemetryDisabled: boolean;
+   9 | }
+  10 |
+  11 | interface PaperclipStatus {
+  12 |   serverUrl: string;
+  13 |   running: boolean;
+  14 |   managed: boolean;
+  15 |   launcherAvailable: boolean;
+  16 |   launcherDetail: string | null;
+  17 |   health: "ok" | "unreachable";
+  18 | }
+  19 |
+  20 | function Paperclip(): React.JSX.Element {
+  21 |   const { t } = useI18n();
+  22 |   const [config, setConfig] = useState<PaperclipConfig>({
+  23 |     serverUrl: "http://127.0.0.1:3100",
+  24 |     autoStart: true,
+  25 |     telemetryDisabled: true,
+  26 |   });
+  27 |   const [status, setStatus] = useState<PaperclipStatus | null>(null);
+  28 |   const [loading, setLoading] = useState(true);
+  29 |   const [saving, setSaving] = useState(false);
+  30 |   const [action, setAction] = useState<"starting" | "stopping" | null>(null);
+  31 |   const [message, setMessage] = useState<string | null>(null);
+  32 |   const [messageType, setMessageType] = useState<"success" | "error">(
+  33 |     "success",
+  34 |   );
+  35 |
+  36 |   const refresh = useCallback(async (): Promise<void> => {
+  37 |     const nextStatus = await window.hermesAPI.paperclipStatus();
+  38 |     setStatus(nextStatus);
+  39 |   }, []);
+  40 |
+  41 |   useEffect(() => {
+  42 |     let mounted = true;
+  43 |     Promise.all([
+  44 |       window.hermesAPI.getPaperclipConfig(),
+  45 |       window.hermesAPI.paperclipStatus(),
+  46 |     ])
+  47 |       .then(([nextConfig, nextStatus]) => {
+  48 |         if (!mounted) return;
+  49 |         setConfig(nextConfig);
+  50 |         setStatus(nextStatus);
+  51 |       })
+  52 |       .finally(() => {
+  53 |         if (mounted) setLoading(false);
+  54 |       });
+  55 |     return () => {
+  56 |       mounted = false;
+  57 |     };
+  58 |   }, []);
+  59 |
+  60 |   async function handleSave(): Promise<void> {
+  61 |     setSaving(true);
+  62 |     setMessage(null);
+  63 |     try {
+  64 |       const next = await window.hermesAPI.setPaperclipConfig(config);
+  65 |       setConfig(next);
+  66 |       await refresh();
+  67 |       setMessageType("success");
+  68 |       setMessage(t("paperclip.saved"));
+  69 |     } catch (err) {
+  70 |       setMessageType("error");
+  71 |       setMessage((err as Error).message);
+  72 |     } finally {
+  73 |       setSaving(false);
+  74 |     }
+  75 |   }
+  76 |
+  77 |   async function handleStart(): Promise<void> {
+  78 |     setAction("starting");
+  79 |     setMessage(null);
+  80 |     const result = await window.hermesAPI.startPaperclip();
+  81 |     await refresh();
+  82 |     if (result.success) {
+  83 |       await window.hermesAPI.openPaperclip();
+  84 |     }
+  85 |     setAction(null);
+  86 |     setMessageType(result.success ? "success" : "error");
+  87 |     setMessage(
+  88 |       result.success
+  89 |         ? t("paperclip.started")
+  90 |         : result.error || t("paperclip.startFailed"),
+  91 |     );
+  92 |   }
+  93 |
+  94 |   async function handleStop(): Promise<void> {
+  95 |     setAction("stopping");
+  96 |     setMessage(null);
+  97 |     const result = await window.hermesAPI.stopPaperclip();
+  98 |     await refresh();
+  99 |     setAction(null);
+ 100 |     setMessageType(result.success ? "success" : "error");
+ 101 |     setMessage(
+ 102 |       result.success
+ 103 |         ? t("paperclip.stopped")
+ 104 |         : result.error || t("paperclip.stopFailed"),
+ 105 |     );
+ 106 |   }
+ 107 |
+ 108 |   const running = status?.running ?? false;
+ 109 |   const managed = status?.managed ?? false;
+ 110 |
+ 111 |   return (
+ 112 |     <div className="settings-container">
+ 113 |       <h1 className="settings-header">{t("paperclip.title")}</h1>
+ 114 |
+ 115 |       <div className="settings-section">
+ 116 |         <div className="settings-section-title">{t("paperclip.status")}</div>
+ 117 |         {loading ? (
+ 118 |           <div className="settings-field-value">{t("common.loading")}</div>
+ 119 |         ) : (
+ 120 |           <>
+ 121 |             <div className="settings-field">
+ 122 |               <label className="settings-field-label">
+ 123 |                 {t("paperclip.server")}
+ 124 |               </label>
+ 125 |               <div className="settings-field-value">
+ 126 |                 {status?.serverUrl || config.serverUrl}
+ 127 |               </div>
+ 128 |             </div>
+ 129 |             <div className="settings-field">
+ 130 |               <label className="settings-field-label">
 ```
 
 ## Internationalization

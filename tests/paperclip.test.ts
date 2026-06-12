@@ -131,7 +131,9 @@ describe("Paperclip sidecar config", () => {
     });
     servers.push(server);
 
-    await new Promise<void>((resolve) => server.listen(0, resolve));
+    await new Promise<void>((resolve) =>
+      server.listen(0, "127.0.0.1", resolve),
+    );
     const { port } = server.address() as AddressInfo;
 
     await expect(requestHealth(`http://127.0.0.1:${port}`)).resolves.toBe(true);

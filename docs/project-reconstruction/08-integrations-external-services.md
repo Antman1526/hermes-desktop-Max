@@ -1,6 +1,6 @@
 # 08 - Integration Points and External Services
 
-Generated from repository state on 2026-06-11. No secrets are included; environment-variable names are documented without values.
+Generated from repository state on 2026-06-12. No secrets are included; environment-variable names are documented without values.
 
 ## Hermes Agent
 
@@ -25,60 +25,56 @@ Supported platform settings include Telegram, Discord, Slack, WhatsApp, Signal, 
 
 Built-in memory editing is file/config based. External memory providers include Honcho, Hindsight, Mem0, RetainDB, Supermemory, OpenViking, ByteRover, and OpenChronicle. Provider discovery and configuration are exposed through `discover-memory-providers` and `configure-memory-provider`.
 
-## Curated Skill Sources
-
-Hermes Desktop Max bundles curated external skills under `resources/curated-skills` so users can install selected high-value skills without relying on the Hermes CLI resolver. Sources include Agent Skills, Taste Skill, and Microsoft SkillOpt. The SkillOpt curated skill installs as `skill-optimization/skillopt` and guides validation-gated improvement of Hermes skills using SkillOpt/SkillOpt-Sleep patterns.
-
 ## Paperclip
 
 Paperclip is managed as a sidecar at `http://127.0.0.1:3100` by default.
 
 ```ts
    1 | import { ChildProcess, execFile, spawn } from "child_process";
-   2 | import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
-   3 | import http from "http";
-   4 | import https from "https";
-   5 | import { join } from "path";
-   6 | import { HERMES_HOME, getEnhancedPath } from "./installer";
-   7 |
-   8 | export const DEFAULT_PAPERCLIP_URL = "http://127.0.0.1:3100";
-   9 |
-  10 | export interface PaperclipConfig {
-  11 |   serverUrl: string;
-  12 |   telemetryDisabled: boolean;
-  13 | }
-  14 |
-  15 | export interface PaperclipStatus {
-  16 |   serverUrl: string;
-  17 |   running: boolean;
-  18 |   managed: boolean;
-  19 |   launcherAvailable: boolean;
-  20 |   launcherDetail: string | null;
-  21 |   health: "ok" | "unreachable";
-  22 | }
-  23 |
-  24 | let paperclipProcess: ChildProcess | null = null;
-  25 |
-  26 | function desktopConfigFile(): string {
-  27 |   return join(HERMES_HOME, "desktop.json");
-  28 | }
-  29 |
-  30 | function readDesktopConfig(): Record<string, unknown> {
-  31 |   try {
-  32 |     const file = desktopConfigFile();
-  33 |     if (!existsSync(file)) return {};
-  34 |     return JSON.parse(readFileSync(file, "utf-8"));
-  35 |   } catch {
-  36 |     return {};
-  37 |   }
-  38 | }
-  39 |
-  40 | function writeDesktopConfig(data: Record<string, unknown>): void {
-  41 |   if (!existsSync(HERMES_HOME)) {
-  42 |     mkdirSync(HERMES_HOME, { recursive: true });
-  43 |   }
-  44 |   writeFileSync(desktopConfigFile(), JSON.stringify(data, null, 2), "utf-8");
-  45 | }
+   2 | import {
+   3 |   appendFileSync,
+   4 |   existsSync,
+   5 |   mkdirSync,
+   6 |   readFileSync,
+   7 |   writeFileSync,
+   8 | } from "fs";
+   9 | import http from "http";
+  10 | import https from "https";
+  11 | import { join } from "path";
+  12 | import { HERMES_HOME, getEnhancedPath } from "./installer";
+  13 |
+  14 | export const DEFAULT_PAPERCLIP_URL = "http://127.0.0.1:3100";
+  15 | export const DEFAULT_PAPERCLIP_VERSION = "2026.529.0";
+  16 | export const PAPERCLIP_NPX_ARGS = [
+  17 |   "--yes",
+  18 |   `paperclipai@${DEFAULT_PAPERCLIP_VERSION}`,
+  19 |   "run",
+  20 | ];
+  21 | export const PAPERCLIP_STARTUP_TIMEOUT_MS = 180000;
+  22 | const PAPERCLIP_HEALTH_POLL_MS = 750;
+  23 | const PAPERCLIP_NPX_CANDIDATES =
+  24 |   process.platform === "win32"
+  25 |     ? ["npx.cmd", "npx"]
+  26 |     : ["/opt/homebrew/bin/npx", "/usr/local/bin/npx", "/usr/bin/npx", "npx"];
+  27 |
+  28 | export interface PaperclipConfig {
+  29 |   serverUrl: string;
+  30 |   autoStart: boolean;
+  31 |   telemetryDisabled: boolean;
+  32 | }
+  33 |
+  34 | export interface PaperclipStatus {
+  35 |   serverUrl: string;
+  36 |   running: boolean;
+  37 |   managed: boolean;
+  38 |   launcherAvailable: boolean;
+  39 |   launcherDetail: string | null;
+  40 |   health: "ok" | "unreachable";
+  41 | }
+  42 |
+  43 | let paperclipProcess: ChildProcess | null = null;
+  44 |
+  45 | function desktopConfigFile(): string {
 ```
 
 ## Hermes Office / Claw3d

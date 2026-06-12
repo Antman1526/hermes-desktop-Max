@@ -1,6 +1,6 @@
 # 10 - Testing Strategy and Test Cases
 
-Generated from repository state on 2026-06-11. No secrets are included; environment-variable names are documented without values.
+Generated from repository state on 2026-06-12. No secrets are included; environment-variable names are documented without values.
 
 ## Test Runner
 
@@ -38,8 +38,7 @@ Top-level `tests/` covers:
 - Environment validation and connection config security.
 - Hermes API streaming, SSE parsing, token reconciliation.
 - Session decoding, session cache sync, session delete/history mapping.
-- Local model file discovery, incomplete-file filtering, unavailable-drive reconciliation, local model server command/status, and chat selection rejection for unavailable local models.
-- Packaging configuration for branded macOS DMG output and local non-notarized `build:mac` script behavior.
+- Local model file discovery and local model server command/status.
 - Paperclip URL/config/status/start/stop.
 - SSH remote path handling and tunnel config.
 - Provider detection and custom provider auto-key selection.
@@ -60,143 +59,285 @@ Local model tests validate root scanning and launcher restrictions:
    5 | import {
    6 |   buildLocalModelEntries,
    7 |   discoverLocalModelFiles,
-   8 |   mergeDiscoveredLocalModelEntries,
-   9 | } from "../src/main/local-model-files";
-   9 |
-  10 | const TEST_DIR = join(tmpdir(), `hermes-local-models-${Date.now()}`);
-  11 |
-  12 | beforeEach(() => {
-  13 |   mkdirSync(TEST_DIR, { recursive: true });
-  14 | });
+   8 |   getLocalModelScanStatus,
+   9 |   isLikelyChatLocalModelFile,
+  10 |   mergeDiscoveredLocalModelEntries,
+  11 |   rescanLocalModels,
+  12 | } from "../src/main/local-model-files";
+  13 |
+  14 | const TEST_DIR = join(tmpdir(), `hermes-local-models-${Date.now()}`);
   15 |
-  16 | afterEach(() => {
-  17 |   rmSync(TEST_DIR, { recursive: true, force: true });
+  16 | beforeEach(() => {
+  17 |   mkdirSync(TEST_DIR, { recursive: true });
   18 | });
   19 |
-  20 | describe("local model file discovery", () => {
-  21 |   it("discovers GGUF and safetensors model files under configured roots", () => {
-  22 |     const mainStore = join(TEST_DIR, "MainStore", "AI_Models");
-  23 |     const desktop = join(TEST_DIR, "Desktop", "AI_Models");
-  24 |     mkdirSync(join(mainStore, "GGUF"), { recursive: true });
-  25 |     mkdirSync(join(desktop, "Transformers"), { recursive: true });
-  26 |
-  27 |     const gguf = join(mainStore, "GGUF", "Hermes-3-Llama-3.1-8B-Q4_K_M.gguf");
-  28 |     const safetensors = join(
-  29 |       desktop,
-  30 |       "Transformers",
-  31 |       "Qwen3-Coder-30B.safetensors",
-  32 |     );
-  33 |     writeFileSync(gguf, Buffer.alloc(1_100_000));
-  34 |     writeFileSync(
-  35 |       join(mainStore, "GGUF", "._Hermes-3-Llama-3.1-8B-Q4_K_M.gguf"),
-  36 |       "",
-  37 |     );
-  38 |     writeFileSync(join(mainStore, "STT.bin"), Buffer.alloc(1_100_000));
-  39 |     writeFileSync(safetensors, Buffer.alloc(1_100_000));
-  40 |
-  41 |     expect(discoverLocalModelFiles([mainStore, desktop])).toEqual([
-  42 |       { path: gguf, root: mainStore, format: "gguf" },
-  43 |       { path: safetensors, root: desktop, format: "safetensors" },
-  44 |     ]);
-  45 |   });
-  46 |
-  47 |   it("skips tiny model files that are usually incomplete downloads or LFS pointers", () => {
-  48 |     const root = join(TEST_DIR, "AI_Models");
-  49 |     mkdirSync(join(root, "GGUF"), { recursive: true });
-  50 |
-  51 |     writeFileSync(join(root, "GGUF", "broken.gguf"), "version https://git-lfs");
-  52 |
-  53 |     expect(discoverLocalModelFiles([root])).toEqual([]);
-  54 |   });
-  55 |
-  56 |   it("builds stable custom-provider entries that preserve local server base URL", () => {
-  48 |     const root = join(TEST_DIR, "AI_Models");
-  49 |     const modelPath = join(root, "GGUF", "Qwen3.6-27B-Q4_K_M.gguf");
-  50 |
-  51 |     const entries = buildLocalModelEntries([
-  52 |       { path: modelPath, root, format: "gguf" },
-  53 |     ]);
+  20 | afterEach(() => {
+  21 |   rmSync(TEST_DIR, { recursive: true, force: true });
+  22 | });
+  23 |
+  24 | describe("local model file discovery", () => {
+  25 |   it("discovers GGUF and safetensors model files under configured roots", () => {
+  26 |     const mainStore = join(TEST_DIR, "MainStore", "AI_Models");
+  27 |     const desktop = join(TEST_DIR, "Desktop", "AI_Models");
+  28 |     mkdirSync(join(mainStore, "GGUF"), { recursive: true });
+  29 |     mkdirSync(join(desktop, "Transformers"), { recursive: true });
+  30 |
+  31 |     const gguf = join(mainStore, "GGUF", "Hermes-3-Llama-3.1-8B-Q4_K_M.gguf");
+  32 |     const safetensors = join(
+  33 |       desktop,
+  34 |       "Transformers",
+  35 |       "Qwen3-Coder-30B.safetensors",
+  36 |     );
+  37 |     writeFileSync(gguf, Buffer.alloc(1_100_000));
+  38 |     writeFileSync(
+  39 |       join(mainStore, "GGUF", "._Hermes-3-Llama-3.1-8B-Q4_K_M.gguf"),
+  40 |       "",
+  41 |     );
+  42 |     writeFileSync(join(mainStore, "STT.bin"), Buffer.alloc(1_100_000));
+  43 |     writeFileSync(safetensors, Buffer.alloc(1_100_000));
+  44 |
+  45 |     expect(discoverLocalModelFiles([mainStore, desktop])).toEqual([
+  46 |       expect.objectContaining({ path: gguf, root: mainStore, format: "gguf" }),
+  47 |       expect.objectContaining({
+  48 |         path: safetensors,
+  49 |         root: desktop,
+  50 |         format: "safetensors",
+  51 |       }),
+  52 |     ]);
+  53 |   });
   54 |
-  55 |     expect(entries).toEqual([
-  56 |       expect.objectContaining({
-  57 |         id: expect.stringMatching(/^local-file-/),
-  58 |         name: "Local Qwen3.6 27B Q4 K M",
-  59 |         provider: "custom",
-  60 |         model: modelPath,
-  61 |         baseUrl: "http://localhost:8080/v1",
-  62 |         source: "local-file",
-  63 |         modelPath,
-  64 |         modelRoot: root,
-  65 |         modelFormat: "gguf",
-  66 |         launchable: true,
-  67 |         available: true,
-  68 |         rootAvailable: true,
-  62 |         source: "local-file",
-  63 |         modelPath,
-  64 |         modelFormat: "gguf",
-  65 |         launchable: true,
-  66 |       }),
-  67 |     ]);
-  68 |   });
-  69 | });
-  70 |
+  55 |   it("skips tiny model files that are usually incomplete downloads or LFS pointers", () => {
+  56 |     const root = join(TEST_DIR, "AI_Models");
+  57 |     mkdirSync(join(root, "GGUF"), { recursive: true });
+  58 |
+  59 |     writeFileSync(join(root, "GGUF", "broken.gguf"), "version https://git-lfs");
+  60 |
+  61 |     expect(discoverLocalModelFiles([root])).toEqual([]);
+  62 |   });
+  63 |
+  64 |   it("skips embedding-only model files from chat model discovery", () => {
+  65 |     const root = join(TEST_DIR, "AI_Models");
+  66 |     mkdirSync(join(root, "GGUF"), { recursive: true });
+  67 |     const chat = join(root, "GGUF", "Llama-3.2-3B-Instruct-Q4_K_M.gguf");
+  68 |     const embedding = join(root, "GGUF", "nomic-embed-text-v1.5.f16.gguf");
+  69 |     writeFileSync(chat, Buffer.alloc(1_100_000));
+  70 |     writeFileSync(embedding, Buffer.alloc(1_100_000));
+  71 |
+  72 |     expect(isLikelyChatLocalModelFile(chat)).toBe(true);
+  73 |     expect(isLikelyChatLocalModelFile(embedding)).toBe(false);
+  74 |     expect(discoverLocalModelFiles([root])).toEqual([
+  75 |       expect.objectContaining({ path: chat }),
+  76 |     ]);
+  77 |   });
+  78 |
+  79 |   it("builds stable custom-provider entries that preserve local server base URL", () => {
+  80 |     const root = join(TEST_DIR, "AI_Models");
+  81 |     const modelPath = join(root, "GGUF", "Qwen3.6-27B-Q4_K_M.gguf");
+  82 |
+  83 |     const entries = buildLocalModelEntries([
+  84 |       { path: modelPath, root, format: "gguf" },
+  85 |     ]);
+  86 |
+  87 |     expect(entries).toEqual([
+  88 |       expect.objectContaining({
+  89 |         id: expect.stringMatching(/^local-file-/),
+  90 |         name: "Local Qwen3.6 27B Q4 K M",
+  91 |         provider: "custom",
+  92 |         model: modelPath,
+  93 |         baseUrl: "http://localhost:8080/v1",
+  94 |         source: "local-file",
+  95 |         modelPath,
+  96 |         modelFormat: "gguf",
+  97 |         launchable: true,
+  98 |         available: true,
+  99 |         rootAvailable: true,
+ 100 |         modelRoot: root,
+ 101 |       }),
+ 102 |     ]);
+ 103 |   });
+ 104 |
+ 105 |   it("marks missing local-file entries unavailable without removing them", () => {
+ 106 |     const mainStore = join(TEST_DIR, "MainStore", "AI_Models");
+ 107 |     const desktop = join(TEST_DIR, "Desktop", "AI_Models");
+ 108 |     const presentPath = join(desktop, "GGUF", "Llama-3.2-3B.gguf");
+ 109 |     const unmountedPath = join(mainStore, "GGUF", "Hermes-3.gguf");
+ 110 |     mkdirSync(join(desktop, "GGUF"), { recursive: true });
+ 111 |     writeFileSync(presentPath, Buffer.alloc(1_100_000));
+ 112 |
+ 113 |     const existing = [
+ 114 |       {
+ 115 |         id: "cloud",
+ 116 |         name: "Cloud",
+ 117 |         provider: "openrouter",
+ 118 |         model: "anthropic/claude",
+ 119 |         baseUrl: "",
+ 120 |         createdAt: 1,
+ 121 |       },
+ 122 |       {
+ 123 |         id: "local-file-old",
+ 124 |         name: "Local Hermes",
+ 125 |         provider: "custom",
+ 126 |         model: unmountedPath,
+ 127 |         baseUrl: "http://localhost:8080/v1",
+ 128 |         source: "local-file" as const,
+ 129 |         modelPath: unmountedPath,
+ 130 |         modelFormat: "gguf" as const,
+ 131 |         modelRoot: mainStore,
+ 132 |         launchable: true,
+ 133 |         available: true,
+ 134 |         rootAvailable: true,
+ 135 |         createdAt: 2,
+ 136 |       },
+ 137 |     ];
+ 138 |
+ 139 |     const next = mergeDiscoveredLocalModelEntries(existing, {
+ 140 |       discovered: buildLocalModelEntries(
 ```
 
 Paperclip tests validate URL normalization and sidecar behavior:
 
 ```ts
-   1 | import { describe, expect, it } from "vitest";
-   2 | import {
-   3 |   DEFAULT_PAPERCLIP_URL,
-   4 |   mergePaperclipConfigData,
-   5 |   normalizePaperclipUrl,
-   6 |   readPaperclipConfigFromData,
-   7 | } from "../src/main/paperclip";
-   8 |
-   9 | describe("Paperclip sidecar config", () => {
-  10 |   it("normalizes empty and bare Paperclip URLs", () => {
-  11 |     expect(normalizePaperclipUrl("")).toBe(DEFAULT_PAPERCLIP_URL);
-  12 |     expect(normalizePaperclipUrl("localhost:3100/")).toBe(
-  13 |       "http://localhost:3100",
-  14 |     );
-  15 |     expect(normalizePaperclipUrl("http://127.0.0.1:3100///")).toBe(
-  16 |       "http://127.0.0.1:3100",
-  17 |     );
-  18 |   });
-  19 |
-  20 |   it("rejects non-http Paperclip URLs", () => {
-  21 |     expect(normalizePaperclipUrl("file:///tmp/paperclip")).toBe(
-  22 |       DEFAULT_PAPERCLIP_URL,
-  23 |     );
-  24 |     expect(normalizePaperclipUrl("javascript://alert(1)")).toBe(
-  25 |       DEFAULT_PAPERCLIP_URL,
-  26 |     );
-  27 |   });
-  28 |
-  29 |   it("reads defaults when desktop config has no Paperclip block", () => {
-  30 |     expect(readPaperclipConfigFromData({})).toEqual({
-  31 |       serverUrl: DEFAULT_PAPERCLIP_URL,
-  32 |       telemetryDisabled: true,
-  33 |     });
-  34 |   });
-  35 |
-  36 |   it("merges Paperclip config without discarding unrelated desktop settings", () => {
-  37 |     const next = mergePaperclipConfigData(
-  38 |       { connectionMode: "local", remoteUrl: "http://example.test" },
-  39 |       { serverUrl: "localhost:3100/", telemetryDisabled: false },
+   1 | import http from "http";
+   2 | import { AddressInfo } from "net";
+   3 | import { afterEach, describe, expect, it } from "vitest";
+   4 | import {
+   5 |   buildPaperclipEnv,
+   6 |   DEFAULT_PAPERCLIP_URL,
+   7 |   DEFAULT_PAPERCLIP_VERSION,
+   8 |   getPaperclipNpmCacheDir,
+   9 |   mergePaperclipConfigData,
+  10 |   normalizePaperclipUrl,
+  11 |   PAPERCLIP_NPX_ARGS,
+  12 |   PAPERCLIP_STARTUP_TIMEOUT_MS,
+  13 |   readPaperclipConfigFromData,
+  14 |   requestHealth,
+  15 |   resolvePaperclipNpxCommand,
+  16 | } from "../src/main/paperclip";
+  17 |
+  18 | describe("Paperclip sidecar config", () => {
+  19 |   const servers: http.Server[] = [];
+  20 |
+  21 |   afterEach(async () => {
+  22 |     await Promise.all(
+  23 |       servers.map(
+  24 |         (server) =>
+  25 |           new Promise<void>((resolve) => {
+  26 |             server.close(() => resolve());
+  27 |           }),
+  28 |       ),
+  29 |     );
+  30 |     servers.length = 0;
+  31 |   });
+  32 |
+  33 |   it("normalizes empty and bare Paperclip URLs", () => {
+  34 |     expect(normalizePaperclipUrl("")).toBe(DEFAULT_PAPERCLIP_URL);
+  35 |     expect(normalizePaperclipUrl("localhost:3100/")).toBe(
+  36 |       "http://localhost:3100",
+  37 |     );
+  38 |     expect(normalizePaperclipUrl("http://127.0.0.1:3100///")).toBe(
+  39 |       "http://127.0.0.1:3100",
   40 |     );
-  41 |
-  42 |     expect(next).toEqual({
-  43 |       connectionMode: "local",
-  44 |       remoteUrl: "http://example.test",
-  45 |       paperclip: {
-  46 |         serverUrl: "http://localhost:3100",
-  47 |         telemetryDisabled: false,
-  48 |       },
-  49 |     });
+  41 |   });
+  42 |
+  43 |   it("rejects non-http Paperclip URLs", () => {
+  44 |     expect(normalizePaperclipUrl("file:///tmp/paperclip")).toBe(
+  45 |       DEFAULT_PAPERCLIP_URL,
+  46 |     );
+  47 |     expect(normalizePaperclipUrl("javascript://alert(1)")).toBe(
+  48 |       DEFAULT_PAPERCLIP_URL,
+  49 |     );
   50 |   });
-  51 | });
-  52 |
+  51 |
+  52 |   it("reads defaults when desktop config has no Paperclip block", () => {
+  53 |     expect(readPaperclipConfigFromData({})).toEqual({
+  54 |       serverUrl: DEFAULT_PAPERCLIP_URL,
+  55 |       autoStart: true,
+  56 |       telemetryDisabled: true,
+  57 |     });
+  58 |   });
+  59 |
+  60 |   it("merges Paperclip config without discarding unrelated desktop settings", () => {
+  61 |     const next = mergePaperclipConfigData(
+  62 |       { connectionMode: "local", remoteUrl: "http://example.test" },
+  63 |       { serverUrl: "localhost:3100/", telemetryDisabled: false },
+  64 |     );
+  65 |
+  66 |     expect(next).toEqual({
+  67 |       connectionMode: "local",
+  68 |       remoteUrl: "http://example.test",
+  69 |       paperclip: {
+  70 |         serverUrl: "http://localhost:3100",
+  71 |         autoStart: true,
+  72 |         telemetryDisabled: false,
+  73 |       },
+  74 |     });
+  75 |   });
+  76 |
+  77 |   it("launches the requested Paperclip release through noninteractive npx", () => {
+  78 |     expect(DEFAULT_PAPERCLIP_VERSION).toBe("2026.529.0");
+  79 |     expect(PAPERCLIP_NPX_ARGS).toEqual([
+  80 |       "--yes",
+  81 |       `paperclipai@${DEFAULT_PAPERCLIP_VERSION}`,
+  82 |       "run",
+  83 |     ]);
+  84 |   });
+  85 |
+  86 |   it("allows enough time for the pinned Paperclip release to finish startup", () => {
+  87 |     expect(PAPERCLIP_STARTUP_TIMEOUT_MS).toBeGreaterThanOrEqual(180000);
+  88 |   });
+  89 |
+  90 |   it("prefers a known absolute npx launcher when the app PATH is sparse", () => {
+  91 |     expect(
+  92 |       resolvePaperclipNpxCommand(
+  93 |         (candidate) => candidate === "/opt/homebrew/bin/npx",
+  94 |       ),
+  95 |     ).toBe("/opt/homebrew/bin/npx");
+  96 |   });
+  97 |
+  98 |   it("uses a Hermes-owned npm cache for npx", () => {
+  99 |     const env = buildPaperclipEnv(
+ 100 |       {
+ 101 |         serverUrl: DEFAULT_PAPERCLIP_URL,
+ 102 |         autoStart: true,
+ 103 |         telemetryDisabled: true,
+ 104 |       },
+ 105 |       { PATH: "/usr/bin" },
+ 106 |     );
+ 107 |
+ 108 |     expect(env.PATH).toContain("/usr/bin");
+ 109 |     expect(env.npm_config_cache).toBe(getPaperclipNpmCacheDir());
+ 110 |     expect(env.NPM_CONFIG_CACHE).toBe(getPaperclipNpmCacheDir());
+ 111 |     expect(env.PAPERCLIP_TELEMETRY_DISABLED).toBe("1");
+ 112 |     expect(env.DO_NOT_TRACK).toBe("1");
+ 113 |   });
+ 114 |
+ 115 |   it("checks the Paperclip API health endpoint instead of the static UI shell", async () => {
+ 116 |     const requestedPaths: string[] = [];
+ 117 |     const server = http.createServer((req, res) => {
+ 118 |       requestedPaths.push(req.url ?? "");
+ 119 |       if (req.url === "/health") {
+ 120 |         res.writeHead(200, { "Content-Type": "text/html" });
+ 121 |         res.end('<!doctype html><div id="root"></div>');
+ 122 |         return;
+ 123 |       }
+ 124 |       if (req.url === "/api/health") {
+ 125 |         res.writeHead(200, { "Content-Type": "application/json" });
+ 126 |         res.end(JSON.stringify({ status: "ok", version: "2026.529.0" }));
+ 127 |         return;
+ 128 |       }
+ 129 |       res.writeHead(404);
+ 130 |       res.end();
+ 131 |     });
+ 132 |     servers.push(server);
+ 133 |
+ 134 |     await new Promise<void>((resolve) => server.listen(0, resolve));
+ 135 |     const { port } = server.address() as AddressInfo;
+ 136 |
+ 137 |     await expect(requestHealth(`http://127.0.0.1:${port}`)).resolves.toBe(true);
+ 138 |     expect(requestedPaths).toEqual(["/api/health"]);
+ 139 |   });
+ 140 | });
+ 141 |
 ```
 
 Security tests validate allowed URLs and webview hardening:
@@ -215,7 +356,7 @@ Security tests validate allowed URLs and webview hardening:
   11 | } from "../src/main/security";
   12 |
   13 | const ROOT = join(__dirname, "..");
-  14 | const mainSrc = readFileSync(join(ROOT, "src/main/index.ts"), "utf-8");
+  14 | const mainSrc = readFileSync(join(ROOT, "src/main/app-main.ts"), "utf-8");
   15 | const preloadSrc = readFileSync(join(ROOT, "src/preload/index.ts"), "utf-8");
   16 | const installerSrc = readFileSync(join(ROOT, "src/main/installer.ts"), "utf-8");
   17 |

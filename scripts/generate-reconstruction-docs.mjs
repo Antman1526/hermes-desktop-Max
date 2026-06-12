@@ -11,7 +11,7 @@ const builder = readFileSync(join(root, "electron-builder.yml"), "utf8").trim();
 const vite = readFileSync(join(root, "electron.vite.config.ts"), "utf8").trim();
 const vitest = readFileSync(join(root, "vitest.config.ts"), "utf8").trim();
 const eslint = readFileSync(join(root, "eslint.config.mjs"), "utf8").trim();
-const generatedOn = "2026-06-03";
+const generatedOn = new Date().toISOString().slice(0, 10);
 
 function ensureDir(file) {
   mkdirSync(dirname(file), { recursive: true });
@@ -644,7 +644,7 @@ ${block("ts", code("src/main/local-model-files.ts", 1, 78))}
 
 ## Local Model Server Algorithm
 
-The launcher only starts a \`.gguf\` file that was discovered under the configured roots. It writes PID and model state files under \`HERMES_HOME\`, checks health at \`http://127.0.0.1:8080/v1/models\`, and uses \`llama-server\` from Homebrew, \`/usr/local/bin\`, or PATH.
+The launcher only starts a \`.gguf\` file that was discovered under the configured roots. It writes PID, model, port, and log state files under \`HERMES_HOME\`, starts at port \`8080\`, searches through \`8099\`, checks health at \`http://127.0.0.1:<port>/v1/models\`, and uses \`llama-server\` from Homebrew, \`/usr/local/bin\`, or PATH.
 
 ${block("ts", code("src/main/local-model-server.ts", 126, 209))}
 
@@ -956,7 +956,7 @@ Log sources:
 2. Use Settings log viewer for gateway/agent logs.
 3. Run \`runHermesDoctor\` from Settings or \`window.hermesAPI.runHermesDoctor()\`.
 4. Check \`desktop.json\`, \`.env\`, \`config.yaml\`, and \`models.json\`.
-5. For local model issues, check \`local-model-server.pid\`, \`local-model-server-model\`, \`llama-server\` availability, and \`http://127.0.0.1:8080/v1/models\`.
+5. For local model issues, check \`local-model-server.pid\`, \`local-model-server-model\`, \`local-model-server-port\`, \`llama-server\` availability, and \`http://127.0.0.1:<port>/v1/models\`.
 
 ## Areas for Review
 
@@ -1246,8 +1246,16 @@ Generated from repository state on ${generatedOn}. This audit identifies technol
 - **highlight.js** - syntax highlighting support.
 - **react-syntax-highlighter** - React syntax-highlighted code blocks.
 - **react-file-icon** - file-type icons for attachments and file previews.
-- **@wesbos/code-icons** - code/file icon assets.
 - **vscode-material-icons** - file icon mapping/assets.
+- **lucide-react file icons** - local file tree icons in WorktreePanel, replacing the older bundled SVG icon dependency.
+
+## Runtime Dependencies From package.json
+
+${dependencyList}
+
+## Development Dependencies From package.json
+
+${devDependencyList}
 
 ## Internationalization and Analytics
 
@@ -1283,7 +1291,7 @@ Generated from repository state on ${generatedOn}. This audit identifies technol
 - **OpenRouter, Anthropic, OpenAI, Google Gemini, xAI, Nous, Qwen, MiniMax, Hugging Face** - primary model provider integrations.
 - **Groq, DeepSeek, Together, Fireworks, Cerebras, Mistral, Perplexity** - OpenAI-compatible hosted endpoints.
 - **LM Studio, Atomic Chat, Ollama, vLLM, llama.cpp, Docker Model Runner** - local OpenAI-compatible model runtimes.
-- **llama-server** - launched for discovered GGUF local model files at \`http://localhost:8080/v1\`.
+- **llama-server** - launched for discovered GGUF local model files at \`http://localhost:<8080-8099>/v1\`; the actual selected port is saved back to model config.
 - **Paperclip AI** - sidecar control-plane server launched through \`npx paperclipai run\`.
 - **OpenChronicle** - memory provider through Streamable HTTP MCP endpoint.
 - **Honcho, Hindsight, Mem0, RetainDB, Supermemory, OpenViking, ByteRover** - optional memory providers.
@@ -1340,10 +1348,12 @@ This fork is currently aligned with upstream release \`v${pkg.version}\` and add
 ## Fork Highlights
 
 - Scans local model files from:
-  - \`/Volumes/MainStore/Development/AI_Models\`
-  - \`/Users/Antman/Desktop/AI_Models\`
+  - \`/Users/Antman/Desktop/AI_Models\` (primary local/default root)
+  - \`/Volumes/MainStore/Development/AI_Models\` (fallback external-drive root)
+- Prioritizes launchable Desktop GGUF files under \`/Users/Antman/Desktop/AI_Models/GGUF\` when no model has been configured yet.
+- Validates local model launch requests so only discovered GGUF files under configured model roots can start \`llama-server\`.
 - Adds discovered \`.gguf\` and \`.safetensors\` files to the saved model library.
-- Launches discovered \`.gguf\` models through local \`llama-server\` at \`http://localhost:8080/v1\`.
+- Launches discovered \`.gguf\` models through local \`llama-server\`, starting at \`http://localhost:8080/v1\` and searching through \`8099\` when ports are occupied.
 - Keeps \`.safetensors\` files discoverable while marking them non-launchable by the built-in llama.cpp launcher.
 - Adds Paperclip sidecar configuration/status/start/stop/open support.
 - Keeps OpenChronicle memory-provider wiring available through Hermes memory provider configuration.
@@ -1354,8 +1364,9 @@ This fork is currently aligned with upstream release \`v${pkg.version}\` and add
 
 Recent local unsigned installers were generated in:
 
-- \`/Users/Antman/Downloads/hermes-desktop-0.5.2-arm64.dmg\`
+- \`/Users/Antman/Downloads/hermes-desktop-max-0.5.2-arm64.dmg\`
 - \`/Users/Antman/Downloads/hermes-desktop-0.5.2-setup.exe\`
+- \`/Users/Antman/Downloads/hermes-desktop-0.5.2-portable.exe\`
 
 Unsigned local builds may trigger macOS Gatekeeper or Windows SmartScreen warnings.
 

@@ -1,6 +1,6 @@
 # 15 - File Structure and Code Organization
 
-Generated from repository state on 2026-06-11. No secrets are included; environment-variable names are documented without values.
+Generated from repository state on 2026-06-12. No secrets are included; environment-variable names are documented without values.
 
 ## Top-Level Structure
 
@@ -76,7 +76,7 @@ src/renderer/src/screens/Chat/
 
 ## Areas for Review
 
-- Split `src/main/app-main.ts` IPC handlers into domain registrars while keeping `src/main/index.ts` as the bootstrap.
+- Split `src/main/index.ts` IPC handlers into domain registrars.
 - Add generated API docs from `src/preload/index.ts`.
 - Move duplicate provider/env mappings into a shared pure data module.
 - Consider a `src/main/domains/<domain>` structure for new subsystems.

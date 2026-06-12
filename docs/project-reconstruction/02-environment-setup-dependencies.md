@@ -1,6 +1,6 @@
 # 02 - Environment Setup and Dependencies
 
-Generated from repository state on 2026-06-11. No secrets are included; environment-variable names are documented without values.
+Generated from repository state on 2026-06-12. No secrets are included; environment-variable names are documented without values.
 
 ## Toolchain
 
@@ -29,37 +29,27 @@ HERMES_HOME=$(mktemp -d -t hermes-fresh) electron-vite dev
 
 ## Runtime Dependencies
 
-- `@electron-toolkit/preload` - `^3.0.2`
 - `@electron-toolkit/utils` - `^4.0.0`
-- `@types/highlight.js` - `^9.12.4`
-- `@types/react-syntax-highlighter` - `^15.5.13`
-- `@wesbos/code-icons` - `^1.2.4`
 - `better-sqlite3` - `^12.8.0`
 - `electron-updater` - `^6.3.9`
-- `highlight.js` - `^11.11.1`
 - `i18next` - `^25.6.0`
-- `lucide-react` - `^1.7.0`
-- `posthog-js` - `^1.376.0`
-- `react-file-icon` - `^1.6.0`
-- `react-i18next` - `^15.7.3`
-- `react-markdown` - `^10.1.0`
-- `react-syntax-highlighter` - `^16.1.1`
-- `remark-gfm` - `^4.0.1`
-- `vscode-material-icons` - `^0.1.1`
 
 ## Development Dependencies
 
 - `@electron-toolkit/eslint-config-prettier` - `^3.0.0`
 - `@electron-toolkit/eslint-config-ts` - `^3.1.0`
+- `@electron-toolkit/preload` - `^3.0.2`
 - `@electron-toolkit/tsconfig` - `^2.0.0`
 - `@tailwindcss/vite` - `^4.2.2`
 - `@testing-library/dom` - `^10.4.1`
 - `@testing-library/jest-dom` - `^6.8.0`
 - `@testing-library/react` - `^16.3.0`
 - `@types/better-sqlite3` - `^7.6.13`
+- `@types/highlight.js` - `^9.12.4`
 - `@types/node` - `^22.19.1`
 - `@types/react` - `^19.2.7`
 - `@types/react-dom` - `^19.2.3`
+- `@types/react-syntax-highlighter` - `^15.5.13`
 - `@vitejs/plugin-react` - `^5.1.1`
 - `electron` - `^39.2.6`
 - `electron-builder` - `^26.0.12`
@@ -68,15 +58,24 @@ HERMES_HOME=$(mktemp -d -t hermes-fresh) electron-vite dev
 - `eslint-plugin-react` - `^7.37.5`
 - `eslint-plugin-react-hooks` - `^7.0.1`
 - `eslint-plugin-react-refresh` - `^0.4.24`
+- `highlight.js` - `^11.11.1`
 - `jsdom` - `^26.1.0`
+- `lucide-react` - `^1.7.0`
 - `playwright` - `^1.60.0`
+- `posthog-js` - `^1.376.0`
 - `prettier` - `^3.7.4`
 - `react` - `^19.2.1`
 - `react-dom` - `^19.2.1`
+- `react-file-icon` - `^1.6.0`
+- `react-i18next` - `^15.7.3`
+- `react-markdown` - `^10.1.0`
+- `react-syntax-highlighter` - `^16.1.1`
+- `remark-gfm` - `^4.0.1`
 - `tailwindcss` - `^4.2.2`
 - `typescript` - `^5.9.3`
 - `vite` - `^7.2.6`
 - `vitest` - `^4.1.4`
+- `vscode-material-icons` - `^0.1.1`
 
 ## Build Configuration
 
@@ -92,6 +91,10 @@ export default defineConfig({
   main: {
     build: {
       rollupOptions: {
+        input: {
+          index: resolve("src/main/index.ts"),
+          "app-main": resolve("src/main/app-main.ts"),
+        },
         external: ["better-sqlite3"],
       },
     },
@@ -215,11 +218,5 @@ export default defineConfig(
 ## Edge Cases
 
 - Native module rebuilds can fail if Electron headers are missing. `postinstall` runs `electron-builder install-app-deps`.
-- macOS production notarization requires Apple credentials; this fork's default `build:mac` disables notarization for local developer DMGs.
+- macOS DMG notarization requires Apple credentials; local unsigned builds must override notarization/signing.
 - Windows native install paths require `venv/Scripts/python.exe` style paths; WSL remains safer for Unix-heavy Hermes Agent scripts.
-
-## Areas for Review
-
-- Should the project pin Node and npm versions through `.nvmrc`, `.node-version`, or Volta to reduce native-module drift?
-- Should `llama.cpp`/`llama-server` be detected during setup and surfaced before the user selects a GGUF model?
-- Should the packaging prerequisites be split by target platform to avoid macOS-only signing guidance confusing Windows/Linux contributors?

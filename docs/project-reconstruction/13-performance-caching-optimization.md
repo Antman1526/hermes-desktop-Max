@@ -1,6 +1,6 @@
 # 13 - Performance Optimization and Caching
 
-Generated from repository state on 2026-06-11. No secrets are included; environment-variable names are documented without values.
+Generated from repository state on 2026-06-12. No secrets are included; environment-variable names are documented without values.
 
 ## Existing Optimizations
 
@@ -14,30 +14,30 @@ Generated from repository state on 2026-06-11. No secrets are included; environm
 ## Config Cache
 
 ```ts
-  90 |     hasApiKey: config.apiKey.length > 0,
-  91 |     apiKeyLength: config.apiKey.length,
-  92 |     ssh: config.ssh,
-  93 |   };
-  94 | }
-  95 |
-  96 | export function setConnectionConfig(config: ConnectionConfig): void {
-  97 |   const data = readDesktopConfig();
-  98 |   data.connectionMode = config.mode;
-  99 |   data.remoteUrl = config.remoteUrl;
- 100 |   data.remoteApiKey = config.apiKey;
- 101 |   if (config.mode === "ssh") {
- 102 |     data.sshConfig = config.ssh;
- 103 |   }
- 104 |   writeDesktopConfig(data);
- 105 | }
- 106 |
- 107 | export function resolveConnectionApiKeyUpdate(
- 108 |   existing: ConnectionConfig,
- 109 |   mode: "local" | "remote" | "ssh",
- 110 |   remoteUrl: string,
- 111 |   apiKey?: string,
- 112 | ): string {
- 113 |   if (apiKey !== undefined) return apiKey;
+  90 |
+  91 | export function setLocalModelRoots(roots: string[]): string[] {
+  92 |   const data = readDesktopConfig();
+  93 |   const next = sanitizeLocalModelRoots(roots);
+  94 |   data.localModelRoots = next;
+  95 |   writeDesktopConfig(data);
+  96 |   return next;
+  97 | }
+  98 |
+  99 | export function resetLocalModelRoots(): string[] {
+ 100 |   return setLocalModelRoots(DEFAULT_LOCAL_MODEL_ROOTS);
+ 101 | }
+ 102 |
+ 103 | export function getConnectionConfig(): ConnectionConfig {
+ 104 |   const data = readDesktopConfig();
+ 105 |   const ssh = (data.sshConfig as Partial<SshConnectionConfig>) ?? {};
+ 106 |   return {
+ 107 |     mode: (data.connectionMode as "local" | "remote" | "ssh") || "local",
+ 108 |     remoteUrl: (data.remoteUrl as string) || "",
+ 109 |     apiKey: (data.remoteApiKey as string) || "",
+ 110 |     ssh: {
+ 111 |       host: (ssh.host as string) || "",
+ 112 |       port: (ssh.port as number) || 22,
+ 113 |       username: (ssh.username as string) || "",
 ```
 
 ## Session Cache Optimization
@@ -125,45 +125,45 @@ Generated from repository state on 2026-06-11. No secrets are included; environm
 Discovery is synchronous and recursive. This is simple and deterministic, but can block if model roots are large or on a slow external disk.
 
 ```ts
-  28 | function stableLocalModelId(path: string): string {
-  29 |   return `local-file-${createHash("sha1").update(path).digest("hex").slice(0, 16)}`;
-  30 | }
-  31 |
-  32 | export function discoverLocalModelFiles(
-  33 |   roots: string[] = getLocalModelRoots(),
-  34 | ): LocalModelFile[] {
-  35 |   const found: LocalModelFile[] = [];
-  36 |
-  37 |   function visit(root: string, dir: string): void {
-  38 |     let entries;
-  39 |     try {
-  40 |       entries = readdirSync(dir, { withFileTypes: true }).sort((a, b) =>
-  41 |         a.name.localeCompare(b.name),
-  42 |       );
-  43 |     } catch {
-  44 |       return;
-  45 |     }
-  46 |
-  47 |     for (const entry of entries) {
-  48 |       if (entry.name.startsWith("._")) continue;
-  49 |       const entryPath = join(dir, entry.name);
-  50 |       if (entry.isDirectory()) {
-  51 |         visit(root, entryPath);
-  52 |         continue;
-  53 |       }
-  54 |       if (!entry.isFile()) continue;
-  55 |
-  56 |       const ext = extname(entry.name).toLowerCase();
-  57 |       if (!SUPPORTED_FORMATS.has(ext)) continue;
-  58 |       found.push({
-  59 |         path: entryPath,
-  60 |         root,
-  61 |         format: ext.slice(1) as LocalModelFile["format"],
-  62 |       });
-  63 |     }
-  64 |   }
-  65 |
-  66 |   for (const root of roots) {
+  28 |   files: LocalModelFile[];
+  29 | }
+  30 |
+  31 | const SUPPORTED_FORMATS = new Set([".gguf", ".safetensors"]);
+  32 | const DEFAULT_LOCAL_BASE_URL = "http://localhost:8080/v1";
+  33 | const MIN_LOCAL_MODEL_BYTES = 1 * 1024 * 1024;
+  34 | const LOCAL_MODEL_SCAN_CACHE_FILE = join(HERMES_HOME, "local-model-scan.json");
+  35 | const NON_CHAT_MODEL_NAME_PATTERNS = [
+  36 |   /\bembed(?:ding)?s?\b/i,
+  37 |   /\bnomic[-_. ]?embed\b/i,
+  38 |   /\bbge[-_. ]/i,
+  39 |   /\be5[-_. ]/i,
+  40 |   /\bgte[-_. ]/i,
+  41 | ];
+  42 |
+  43 | function modelNameFromPath(path: string): string {
+  44 |   const withoutExt = basename(path, extname(path));
+  45 |   return (
+  46 |     "Local " + withoutExt.replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim()
+  47 |   );
+  48 | }
+  49 |
+  50 | function stableLocalModelId(path: string): string {
+  51 |   return `local-file-${createHash("sha1").update(path).digest("hex").slice(0, 16)}`;
+  52 | }
+  53 |
+  54 | export function isLikelyChatLocalModelFile(path: string): boolean {
+  55 |   const name = basename(path, extname(path)).replace(/[_-]+/g, " ");
+  56 |   return !NON_CHAT_MODEL_NAME_PATTERNS.some((pattern) => pattern.test(name));
+  57 | }
+  58 |
+  59 | export function discoverLocalModelFiles(
+  60 |   roots: string[] = getLocalModelRoots(),
+  61 | ): LocalModelFile[] {
+  62 |   const found: LocalModelFile[] = [];
+  63 |
+  64 |   function visit(root: string, dir: string): void {
+  65 |     let entries;
+  66 |     try {
 ```
 
 ## Renderer Performance
@@ -176,7 +176,7 @@ The UI uses local state and memoization sparingly. Large transcripts rely on com
 
 ## Areas for Review
 
-- Add async/cancellable local model scanning and cache results with file mtimes. Current scanning is deterministic and skips tiny files, but it still performs synchronous recursive directory traversal and `statSync` calls on any mounted model roots.
+- Add async/cancellable local model scanning and cache results with file mtimes.
 - Virtualize long chat transcripts and session lists.
 - Debounce repeated settings writes from form-heavy screens.
 - Split large IPC registration so startup does not import every subsystem eagerly.

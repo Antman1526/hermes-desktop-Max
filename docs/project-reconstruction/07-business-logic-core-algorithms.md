@@ -1,6 +1,6 @@
 # 07 - Business Logic and Core Algorithms
 
-Generated from repository state on 2026-06-11. No secrets are included; environment-variable names are documented without values.
+Generated from repository state on 2026-06-12. No secrets are included; environment-variable names are documented without values.
 
 ## Install and Runtime Orchestration
 
@@ -19,271 +19,201 @@ The installer module resolves `HERMES_HOME`, Hermes repo path, Python path, enha
 URL normalization:
 
 ```ts
-  35 |   pidIsAliveAs,
-  36 |   stripAnsi,
-  37 |   profileHome,
-  38 |   getActiveProfileNameSync,
-  39 | } from "./utils";
-  40 | import { readModels } from "./models";
-  41 | import { HIDDEN_SUBPROCESS_OPTIONS } from "./process-options";
-  42 | import { type Attachment, escapeXmlAttr } from "../shared/attachments";
-  43 |
-  44 | const LOCAL_API_URL = "http://127.0.0.1:8642";
+  35 | } from "./ssh-tunnel";
+  36 | import {
+  37 |   pidIsAliveAs,
+  38 |   stripAnsi,
+  39 |   profileHome,
+  40 |   getActiveProfileNameSync,
+  41 | } from "./utils";
+  42 | import { readModels } from "./models";
+  43 | import { HIDDEN_SUBPROCESS_OPTIONS } from "./process-options";
+  44 | import { type Attachment, escapeXmlAttr } from "../shared/attachments";
   45 |
-  46 | /**
-  47 |  * Normalise a remote-mode URL the user typed into the connection
-  48 |  * settings.  Strips trailing slashes and, importantly, a trailing
-  49 |  * `/v1` segment — callers append `/v1/<path>` themselves, so leaving
-  50 |  * the user's `/v1` would produce `http://host/v1/v1/chat/completions`
-  51 |  * → 404.  Reported as #266 (multiple users entered the URL "with
-  52 |  * /v1" because the gateway's curl examples show that form).
-  53 |  *
+  46 | const LOCAL_API_URL = "http://127.0.0.1:8642";
+  47 | const DIRECT_LOCAL_MODEL_REQUEST_TIMEOUT_MS = 300_000;
+  48 |
+  49 | /**
+  50 |  * Normalise a remote-mode URL the user typed into the connection
+  51 |  * settings.  Strips trailing slashes and, importantly, a trailing
+  52 |  * `/v1` segment — callers append `/v1/<path>` themselves, so leaving
+  53 |  * the user's `/v1` would produce `http://host/v1/v1/chat/completions`
 ```
 
 ## Local Model Discovery Algorithm
 
-The fork scans configured roots recursively, with `/Users/Antman/Desktop/AI_Models` first and `/Volumes/MainStore/Development/AI_Models` second by default. It ignores macOS AppleDouble `._` files, skips tiny files below `1 * 1024 * 1024` bytes, accepts `.gguf` and `.safetensors`, filters embedding-only names from the chat picker, and converts each file into a deterministic saved model entry. GGUF files are launchable through `llama-server`; safetensors files are discoverable but not directly launched. Reconciliation sorts local-file entries by configured root priority so Desktop GGUF models remain the main/default candidates even when older MainStore entries already exist in `models.json`.
+The fork scans the two configured roots recursively, ignores macOS AppleDouble `._` files, accepts `.gguf` and `.safetensors`, and converts each file into a deterministic saved model entry. GGUF files are launchable through `llama-server`; safetensors files are discoverable but not directly launched.
 
 ```ts
    1 | import { createHash } from "crypto";
    2 | import { existsSync, readdirSync, statSync } from "fs";
    3 | import { basename, extname, join } from "path";
-   4 | import { homedir } from "os";
-   5 | import type { SavedModel } from "./models";
-   6 |
-   7 | export const DEFAULT_LOCAL_MODEL_ROOTS = [
-   8 |   join(homedir(), "Desktop", "AI_Models"),
-   9 |   "/Volumes/MainStore/Development/AI_Models",
-  10 | ];
-  11 |
-  12 | export interface LocalModelFile {
-  13 |   path: string;
-  14 |   root: string;
-  15 |   format: "gguf" | "safetensors";
-  16 | }
-  17 |
-  18 | const SUPPORTED_FORMATS = new Set([".gguf", ".safetensors"]);
-  19 | const DEFAULT_LOCAL_BASE_URL = "http://localhost:8080/v1";
-  20 | const MIN_LOCAL_MODEL_BYTES = 1 * 1024 * 1024;
-  21 |
-  22 | function modelNameFromPath(path: string): string {
-  22 |   const withoutExt = basename(path, extname(path));
-  23 |   return (
-  24 |     "Local " + withoutExt.replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim()
-  25 |   );
-  26 | }
-  27 |
-  28 | function stableLocalModelId(path: string): string {
-  29 |   return `local-file-${createHash("sha1").update(path).digest("hex").slice(0, 16)}`;
-  30 | }
-  31 |
-  32 | export function discoverLocalModelFiles(
-  33 |   roots: string[] = getLocalModelRoots(),
-  34 | ): LocalModelFile[] {
-  35 |   const found: LocalModelFile[] = [];
-  36 |
-  37 |   function visit(root: string, dir: string): void {
-  38 |     let entries;
-  39 |     try {
-  40 |       entries = readdirSync(dir, { withFileTypes: true }).sort((a, b) =>
-  41 |         a.name.localeCompare(b.name),
-  42 |       );
-  43 |     } catch {
-  44 |       return;
-  45 |     }
-  46 |
-  47 |     for (const entry of entries) {
-  48 |       if (entry.name.startsWith("._")) continue;
-  49 |       const entryPath = join(dir, entry.name);
-  50 |       if (entry.isDirectory()) {
-  51 |         visit(root, entryPath);
-  52 |         continue;
-  53 |       }
-  54 |       if (!entry.isFile()) continue;
-  55 |
-  56 |       const ext = extname(entry.name).toLowerCase();
-  57 |       if (!SUPPORTED_FORMATS.has(ext)) continue;
-  58 |       try {
-  59 |         // Intent: ignore partial downloads and placeholder model files.
-  60 |         if (statSync(entryPath).size < MIN_LOCAL_MODEL_BYTES) continue;
-  61 |       } catch {
-  62 |         continue;
-  63 |       }
-  64 |       found.push({
-  65 |         path: entryPath,
-  66 |         root,
-  67 |         format: ext.slice(1) as LocalModelFile["format"],
-  68 |       });
-  63 |     }
-  64 |   }
-  65 |
-  66 |   for (const root of roots) {
-  67 |     if (existsSync(root)) visit(root, root);
-  68 |   }
-  69 |
-  70 |   return found;
-  71 | }
-  72 |
-  79 | export function buildLocalModelEntries(files: LocalModelFile[]): SavedModel[] {
-  80 |   return files.map((file) => ({
-  81 |     id: stableLocalModelId(file.path),
-  82 |     name: modelNameFromPath(file.path),
-  83 |     provider: "custom",
-  84 |     model: file.path,
-  85 |     baseUrl: DEFAULT_LOCAL_BASE_URL,
-  86 |     source: "local-file",
-  87 |     modelPath: file.path,
-  88 |     modelRoot: file.root,
-  89 |     modelFormat: file.format,
-  90 |     launchable: file.format === "gguf",
-  91 |     available: true,
-  92 |     rootAvailable: true,
-  93 |     createdAt: Date.now(),
-  94 |   }));
-```
-
-Model reconciliation preserves user-visible local file entries when drives disappear. This is important for `/Volumes/MainStore/Development/AI_Models`: removing a drive should disable entries, not erase the user's model library.
-
-```ts
- 107 | export function mergeDiscoveredLocalModelEntries(
- 108 |   existing: SavedModel[],
- 109 |   {
- 110 |     discovered,
- 111 |     roots = LOCAL_MODEL_ROOTS,
- 112 |   }: { discovered: SavedModel[]; roots?: string[] },
- 113 | ): SavedModel[] {
- 114 |   const discoveredByModel = new Map(
- 115 |     discovered.map((entry) => [`${entry.provider}:${entry.model}`, entry]),
- 116 |   );
- 117 |   const seen = new Set<string>();
- 118 |
- 119 |   const reconciled = existing.map((entry) => {
- 120 |     if (entry.source !== "local-file") return entry;
- 121 |
- 122 |     const key = `${entry.provider}:${entry.model}`;
- 123 |     const fresh = discoveredByModel.get(key);
- 124 |     if (fresh) {
- 125 |       seen.add(key);
- 126 |       return {
- 127 |         ...entry,
- 128 |         baseUrl: fresh.baseUrl,
- 129 |         modelPath: fresh.modelPath,
- 130 |         modelRoot: fresh.modelRoot,
- 131 |         modelFormat: fresh.modelFormat,
- 132 |         launchable: fresh.launchable,
- 133 |         available: true,
- 134 |         rootAvailable: true,
- 135 |         unavailableReason: undefined,
- 136 |       };
- 137 |     }
- 138 |
- 139 |     const modelRoot = entry.modelRoot || inferRoot(entry.modelPath, roots);
- 140 |     const rootAvailable = modelRoot ? existsSync(modelRoot) : false;
- 141 |     const unavailableReason =
- 142 |       modelRoot && !rootAvailable
- 143 |         ? `Model folder is not mounted: ${modelRoot}`
- 144 |         : `Model file is missing: ${entry.modelPath || entry.model}`;
- 145 |
- 146 |     return {
- 147 |       ...entry,
- 148 |       modelRoot,
- 149 |       available: false,
- 150 |       rootAvailable,
- 151 |       unavailableReason,
- 152 |     };
- 153 |   });
+   4 | import { HERMES_HOME } from "./installer";
+   5 | import { getLocalModelRoots, DEFAULT_LOCAL_MODEL_ROOTS } from "./config";
+   6 | import type { SavedModel } from "./models";
+   7 | import { safeWriteFile } from "./utils";
+   8 |
+   9 | export const LOCAL_MODEL_ROOTS = DEFAULT_LOCAL_MODEL_ROOTS;
+  10 |
+  11 | export interface LocalModelFile {
+  12 |   path: string;
+  13 |   root: string;
+  14 |   format: "gguf" | "safetensors";
+  15 |   size?: number;
+  16 |   mtimeMs?: number;
+  17 | }
+  18 |
+  19 | export interface LocalModelRootStatus {
+  20 |   path: string;
+  21 |   available: boolean;
+  22 |   modelCount: number;
+  23 | }
+  24 |
+  25 | export interface LocalModelScanStatus {
+  26 |   createdAt: number;
+  27 |   roots: LocalModelRootStatus[];
+  28 |   files: LocalModelFile[];
+  29 | }
+  30 |
+  31 | const SUPPORTED_FORMATS = new Set([".gguf", ".safetensors"]);
+  32 | const DEFAULT_LOCAL_BASE_URL = "http://localhost:8080/v1";
+  33 | const MIN_LOCAL_MODEL_BYTES = 1 * 1024 * 1024;
+  34 | const LOCAL_MODEL_SCAN_CACHE_FILE = join(HERMES_HOME, "local-model-scan.json");
+  35 | const NON_CHAT_MODEL_NAME_PATTERNS = [
+  36 |   /\bembed(?:ding)?s?\b/i,
+  37 |   /\bnomic[-_. ]?embed\b/i,
+  38 |   /\bbge[-_. ]/i,
+  39 |   /\be5[-_. ]/i,
+  40 |   /\bgte[-_. ]/i,
+  41 | ];
+  42 |
+  43 | function modelNameFromPath(path: string): string {
+  44 |   const withoutExt = basename(path, extname(path));
+  45 |   return (
+  46 |     "Local " + withoutExt.replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim()
+  47 |   );
+  48 | }
+  49 |
+  50 | function stableLocalModelId(path: string): string {
+  51 |   return `local-file-${createHash("sha1").update(path).digest("hex").slice(0, 16)}`;
+  52 | }
+  53 |
+  54 | export function isLikelyChatLocalModelFile(path: string): boolean {
+  55 |   const name = basename(path, extname(path)).replace(/[_-]+/g, " ");
+  56 |   return !NON_CHAT_MODEL_NAME_PATTERNS.some((pattern) => pattern.test(name));
+  57 | }
+  58 |
+  59 | export function discoverLocalModelFiles(
+  60 |   roots: string[] = getLocalModelRoots(),
+  61 | ): LocalModelFile[] {
+  62 |   const found: LocalModelFile[] = [];
+  63 |
+  64 |   function visit(root: string, dir: string): void {
+  65 |     let entries;
+  66 |     try {
+  67 |       entries = readdirSync(dir, { withFileTypes: true }).sort((a, b) =>
+  68 |         a.name.localeCompare(b.name),
+  69 |       );
+  70 |     } catch {
+  71 |       return;
+  72 |     }
+  73 |
+  74 |     for (const entry of entries) {
+  75 |       if (entry.name.startsWith("._")) continue;
+  76 |       const entryPath = join(dir, entry.name);
+  77 |       if (entry.isDirectory()) {
+  78 |         visit(root, entryPath);
 ```
 
 ## Local Model Server Algorithm
 
-The launcher only starts `.gguf` files from configured/discovered roots. It writes PID, model, and port state files under `HERMES_HOME`, checks health at `http://127.0.0.1:<port>/v1/models`, and uses `llama-server` from Homebrew, `/usr/local/bin`, or PATH. It starts at port `8080`, searches through `8099`, and rewrites the selected model config to the actual returned base URL when another port is used.
+The launcher only starts a `.gguf` file that was discovered under the configured roots. It writes PID, model, port, and log state files under `HERMES_HOME`, starts at port `8080`, searches through `8099`, checks health at `http://127.0.0.1:<port>/v1/models`, and uses `llama-server` from Homebrew, `/usr/local/bin`, or PATH.
 
 ```ts
- 126 |         resolve(Boolean(res.statusCode && res.statusCode < 500));
- 127 |         res.resume();
- 128 |       },
- 129 |     );
- 130 |     req.on("error", () => resolve(false));
- 131 |     req.on("timeout", () => {
- 132 |       req.destroy();
- 133 |       resolve(false);
- 134 |     });
- 135 |     req.end();
- 136 |   });
- 137 | }
- 138 |
- 139 | export async function waitForLocalModelServerReady({
- 140 |   timeoutMs = SERVER_START_TIMEOUT_MS,
- 141 |   intervalMs = SERVER_START_POLL_MS,
- 142 |   healthCheck = serverHealth,
- 143 | }: {
- 144 |   timeoutMs?: number;
- 145 |   intervalMs?: number;
- 146 |   healthCheck?: () => Promise<boolean>;
- 147 | } = {}): Promise<boolean> {
- 148 |   const deadline = Date.now() + timeoutMs;
- 149 |   do {
- 150 |     if (await healthCheck()) return true;
- 151 |     await new Promise((resolve) => setTimeout(resolve, intervalMs));
- 152 |   } while (Date.now() < deadline);
- 153 |   return healthCheck();
- 154 | }
- 155 |
- 156 | export async function getLocalModelServerStatus(): Promise<LocalModelServerStatus> {
- 157 |   const launcherPath = resolveLlamaServerCommand();
- 158 |   const launcherAvailable = commandAvailable(launcherPath);
- 159 |   const pid = readPid();
- 160 |   const managed = Boolean(pid && pidIsAlive(pid));
- 161 |   const running = await serverHealth();
- 162 |   if (pid && !managed && !running) clearStateFiles();
- 163 |
- 164 |   return {
- 165 |     running,
- 166 |     managed,
- 167 |     launcherAvailable,
- 168 |     launcherPath: launcherAvailable ? launcherPath : null,
- 169 |     modelPath: managed ? readModelPath() : null,
- 170 |     baseUrl: LOCAL_MODEL_SERVER_BASE_URL,
- 171 |     pid: managed ? pid : null,
- 172 |   };
- 173 | }
- 174 |
- 175 | export async function startLocalModelServer(
- 176 |   modelPath: string,
- 177 | ): Promise<LocalModelServerStatus> {
- 178 |   if (!isLaunchableLocalModel(modelPath)) {
- 179 |     return {
- 180 |       ...(await getLocalModelServerStatus()),
- 181 |       error: "Only GGUF model files can be launched with llama-server.",
- 182 |     };
- 183 |   }
- 184 |   if (!isDiscoveredLocalModelPath(modelPath)) {
- 185 |     return {
- 186 |       ...(await getLocalModelServerStatus()),
- 187 |       error: "Model file is not in a configured local model folder.",
- 188 |     };
- 189 |   }
- 190 |   if (!existsSync(modelPath)) {
- 191 |     return {
- 192 |       ...(await getLocalModelServerStatus()),
- 193 |       error: `Model file does not exist: ${modelPath}`,
- 194 |     };
- 195 |   }
- 196 |
- 197 |   const current = await getLocalModelServerStatus();
- 198 |   if (current.running && current.modelPath === modelPath) return current;
- 199 |   if (current.managed && current.modelPath !== modelPath) {
- 200 |     stopLocalModelServer();
- 201 |   }
- 202 |
- 203 |   const command = resolveLlamaServerCommand();
- 204 |   if (!commandAvailable(command)) {
- 205 |     return {
- 206 |       ...current,
- 207 |       launcherAvailable: false,
- 208 |       launcherPath: null,
- 209 |       error:
- 210 |         "llama-server was not found. Install llama.cpp with `brew install llama.cpp`, or put a llama-server binary on PATH.",
+ 126 |   port = LOCAL_MODEL_SERVER_PORT,
+ 127 | ): string[] {
+ 128 |   return [
+ 129 |     "--model",
+ 130 |     modelPath,
+ 131 |     "--host",
+ 132 |     "127.0.0.1",
+ 133 |     "--port",
+ 134 |     String(port),
+ 135 |     "--alias",
+ 136 |     modelPath,
+ 137 |     "--ctx-size",
+ 138 |     String(LOCAL_MODEL_SERVER_CONTEXT_SIZE),
+ 139 |     "--no-warmup",
+ 140 |   ];
+ 141 | }
+ 142 |
+ 143 | export function resolveLlamaServerCommand(
+ 144 |   fileExists: (path: string) => boolean = existsSync,
+ 145 | ): string {
+ 146 |   for (const candidate of LLAMA_SERVER_CANDIDATES) {
+ 147 |     if (fileExists(candidate)) return candidate;
+ 148 |   }
+ 149 |   return "llama-server";
+ 150 | }
+ 151 |
+ 152 | function commandAvailable(command: string): boolean {
+ 153 |   if (command.includes("/") && existsSync(command)) return true;
+ 154 |   const result = spawnSync(
+ 155 |     process.platform === "win32" ? "where" : "which",
+ 156 |     [command],
+ 157 |     {
+ 158 |       encoding: "utf8",
+ 159 |       env: { ...process.env, PATH: getEnhancedPath() },
+ 160 |       timeout: 5000,
+ 161 |       windowsHide: true,
+ 162 |     },
+ 163 |   );
+ 164 |   return result.status === 0;
+ 165 | }
+ 166 |
+ 167 | export function getLocalModelRuntimeStatus(
+ 168 |   fileExists: (path: string) => boolean = existsSync,
+ 169 |   commandIsAvailable: (command: string) => boolean = commandAvailable,
+ 170 | ): LocalModelRuntimeStatus {
+ 171 |   const command = resolveLlamaServerCommand(fileExists);
+ 172 |   const available =
+ 173 |     command.includes("/") && fileExists(command)
+ 174 |       ? true
+ 175 |       : commandIsAvailable(command);
+ 176 |   return {
+ 177 |     llamaServerAvailable: available,
+ 178 |     llamaServerPath: available ? command : null,
+ 179 |     installHint: available ? null : LOCAL_MODEL_SERVER_MISSING_LLAMA_HINT,
+ 180 |   };
+ 181 | }
+ 182 |
+ 183 | function readPid(): number | null {
+ 184 |   try {
+ 185 |     if (!existsSync(PID_FILE)) return null;
+ 186 |     const pid = parseInt(readFileSync(PID_FILE, "utf-8").trim(), 10);
+ 187 |     return Number.isFinite(pid) ? pid : null;
+ 188 |   } catch {
+ 189 |     return null;
+ 190 |   }
+ 191 | }
+ 192 |
+ 193 | function readModelPath(): string | null {
+ 194 |   try {
+ 195 |     if (!existsSync(MODEL_FILE)) return null;
+ 196 |     return readFileSync(MODEL_FILE, "utf-8").trim() || null;
+ 197 |   } catch {
+ 198 |     return null;
+ 199 |   }
+ 200 | }
+ 201 |
+ 202 | function readPort(): number | null {
+ 203 |   try {
+ 204 |     if (!existsSync(PORT_FILE)) return null;
+ 205 |     const port = parseInt(readFileSync(PORT_FILE, "utf-8").trim(), 10);
+ 206 |     return Number.isInteger(port) && port > 0 ? port : null;
+ 207 |   } catch {
+ 208 |     return null;
+ 209 |   }
 ```
 
 ## Session Cache Algorithm
@@ -407,81 +337,81 @@ Session sync uses a last-sync window, O(1) Map merges, and chunked stale count r
 Paperclip config normalizes URLs, validates health, checks `paperclipai` or `npx`, and starts `npx paperclipai run` with telemetry disabled by default.
 
 ```ts
-  46 |
-  47 | export function normalizePaperclipUrl(input: string): string {
-  48 |   const trimmed = input.trim();
-  49 |   if (!trimmed) return DEFAULT_PAPERCLIP_URL;
-  50 |   const withProtocol = /^[a-z]+:\/\//i.test(trimmed)
-  51 |     ? trimmed
-  52 |     : `http://${trimmed}`;
-  53 |   try {
-  54 |     const parsed = new URL(withProtocol);
-  55 |     if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-  56 |       return DEFAULT_PAPERCLIP_URL;
-  57 |     }
-  58 |     return withProtocol.replace(/\/+$/, "");
-  59 |   } catch {
-  60 |     return DEFAULT_PAPERCLIP_URL;
-  61 |   }
-  62 | }
-  63 |
-  64 | export function readPaperclipConfigFromData(
-  65 |   data: Record<string, unknown>,
-  66 | ): PaperclipConfig {
-  67 |   const raw =
-  68 |     data.paperclip && typeof data.paperclip === "object"
-  69 |       ? (data.paperclip as Record<string, unknown>)
-  70 |       : {};
+  46 |   return join(HERMES_HOME, "desktop.json");
+  47 | }
+  48 |
+  49 | export function getPaperclipNpmCacheDir(): string {
+  50 |   return join(HERMES_HOME, "paperclip-npm-cache");
+  51 | }
+  52 |
+  53 | function paperclipLogFile(): string {
+  54 |   return join(HERMES_HOME, "paperclip.log");
+  55 | }
+  56 |
+  57 | function ensurePaperclipRuntimeDirs(): void {
+  58 |   mkdirSync(getPaperclipNpmCacheDir(), { recursive: true });
+  59 | }
+  60 |
+  61 | function appendPaperclipLog(chunk: Buffer | string): void {
+  62 |   try {
+  63 |     if (!existsSync(HERMES_HOME)) {
+  64 |       mkdirSync(HERMES_HOME, { recursive: true });
+  65 |     }
+  66 |     appendFileSync(paperclipLogFile(), chunk);
+  67 |   } catch {
+  68 |     // Logging must not block sidecar startup.
+  69 |   }
+  70 | }
   71 |
-  72 |   return {
-  73 |     serverUrl: normalizePaperclipUrl(
-  74 |       typeof raw.serverUrl === "string" ? raw.serverUrl : "",
-  75 |     ),
-  76 |     telemetryDisabled:
-  77 |       typeof raw.telemetryDisabled === "boolean" ? raw.telemetryDisabled : true,
-  78 |   };
-  79 | }
-  80 |
-  81 | export function mergePaperclipConfigData(
-  82 |   data: Record<string, unknown>,
-  83 |   config: Partial<PaperclipConfig>,
-  84 | ): Record<string, unknown> {
-  85 |   const current = readPaperclipConfigFromData(data);
-  86 |   return {
-  87 |     ...data,
-  88 |     paperclip: {
-  89 |       serverUrl: normalizePaperclipUrl(config.serverUrl ?? current.serverUrl),
-  90 |       telemetryDisabled: config.telemetryDisabled ?? current.telemetryDisabled,
-  91 |     },
-  92 |   };
-  93 | }
-  94 |
-  95 | export function getPaperclipConfig(): PaperclipConfig {
-  96 |   return readPaperclipConfigFromData(readDesktopConfig());
-  97 | }
-  98 |
-  99 | export function setPaperclipConfig(
- 100 |   config: Partial<PaperclipConfig>,
- 101 | ): PaperclipConfig {
- 102 |   const nextData = mergePaperclipConfigData(readDesktopConfig(), config);
- 103 |   writeDesktopConfig(nextData);
- 104 |   return readPaperclipConfigFromData(nextData);
- 105 | }
- 106 |
- 107 | function requestHealth(url: string): Promise<boolean> {
- 108 |   return new Promise((resolve) => {
- 109 |     const healthUrl = `${normalizePaperclipUrl(url)}/health`;
- 110 |     const mod = healthUrl.startsWith("https") ? https : http;
- 111 |     const req = mod.request(
- 112 |       healthUrl,
- 113 |       { method: "GET", timeout: 1500 },
- 114 |       (res) => {
- 115 |         resolve(
- 116 |           Boolean(
- 117 |             res.statusCode && res.statusCode >= 200 && res.statusCode < 500,
- 118 |           ),
- 119 |         );
- 120 |         res.resume();
+  72 | function readDesktopConfig(): Record<string, unknown> {
+  73 |   try {
+  74 |     const file = desktopConfigFile();
+  75 |     if (!existsSync(file)) return {};
+  76 |     return JSON.parse(readFileSync(file, "utf-8"));
+  77 |   } catch {
+  78 |     return {};
+  79 |   }
+  80 | }
+  81 |
+  82 | function writeDesktopConfig(data: Record<string, unknown>): void {
+  83 |   if (!existsSync(HERMES_HOME)) {
+  84 |     mkdirSync(HERMES_HOME, { recursive: true });
+  85 |   }
+  86 |   writeFileSync(desktopConfigFile(), JSON.stringify(data, null, 2), "utf-8");
+  87 | }
+  88 |
+  89 | export function normalizePaperclipUrl(input: string): string {
+  90 |   const trimmed = input.trim();
+  91 |   if (!trimmed) return DEFAULT_PAPERCLIP_URL;
+  92 |   const withProtocol = /^[a-z]+:\/\//i.test(trimmed)
+  93 |     ? trimmed
+  94 |     : `http://${trimmed}`;
+  95 |   try {
+  96 |     const parsed = new URL(withProtocol);
+  97 |     if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+  98 |       return DEFAULT_PAPERCLIP_URL;
+  99 |     }
+ 100 |     return withProtocol.replace(/\/+$/, "");
+ 101 |   } catch {
+ 102 |     return DEFAULT_PAPERCLIP_URL;
+ 103 |   }
+ 104 | }
+ 105 |
+ 106 | export function readPaperclipConfigFromData(
+ 107 |   data: Record<string, unknown>,
+ 108 | ): PaperclipConfig {
+ 109 |   const raw =
+ 110 |     data.paperclip && typeof data.paperclip === "object"
+ 111 |       ? (data.paperclip as Record<string, unknown>)
+ 112 |       : {};
+ 113 |
+ 114 |   return {
+ 115 |     serverUrl: normalizePaperclipUrl(
+ 116 |       typeof raw.serverUrl === "string" ? raw.serverUrl : "",
+ 117 |     ),
+ 118 |     autoStart: typeof raw.autoStart === "boolean" ? raw.autoStart : true,
+ 119 |     telemetryDisabled:
+ 120 |       typeof raw.telemetryDisabled === "boolean" ? raw.telemetryDisabled : true,
 ```
 
 ## YAML Path Logic

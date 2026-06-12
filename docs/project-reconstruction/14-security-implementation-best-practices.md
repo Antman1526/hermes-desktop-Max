@@ -1,6 +1,6 @@
 # 14 - Security Implementation and Best Practices
 
-Generated from repository state on 2026-06-11. No secrets are included; environment-variable names are documented without values.
+Generated from repository state on 2026-06-12. No secrets are included; environment-variable names are documented without values.
 
 ## Electron Hardening
 
@@ -94,80 +94,80 @@ Renderer input enters privileged code through IPC only. Risk areas are channels 
 `validateEnvEntry` rejects invalid environment names and multiline values. `normalizePaperclipUrl` allows only HTTP/HTTPS and falls back to localhost.
 
 ```ts
- 160 |     const eqIndex = trimmed.indexOf("=");
- 161 |     const key = trimmed.substring(0, eqIndex).trim();
- 162 |     let value = trimmed.substring(eqIndex + 1).trim();
- 163 |
- 164 |     if (
- 165 |       (value.startsWith('"') && value.endsWith('"')) ||
- 166 |       (value.startsWith("'") && value.endsWith("'"))
- 167 |     ) {
- 168 |       value = value.slice(1, -1);
- 169 |     }
+ 160 |
+ 161 | function getCached<T>(key: string): T | undefined {
+ 162 |   const entry = _cache.get(key);
+ 163 |   if (!entry) return undefined;
+ 164 |   if (Date.now() - entry.ts > CACHE_TTL) {
+ 165 |     _cache.delete(key);
+ 166 |     return undefined;
+ 167 |   }
+ 168 |   return entry.data as T;
+ 169 | }
  170 |
- 171 |     result[key] = value;
- 172 |   }
- 173 |
- 174 |   setCache(cacheKey, result);
- 175 |   return result;
- 176 | }
- 177 |
- 178 | export function setEnvValue(
+ 171 | function setCache(key: string, data: unknown): void {
+ 172 |   _cache.set(key, { data, ts: Date.now() });
+ 173 | }
+ 174 |
+ 175 | function invalidateCache(prefix: string): void {
+ 176 |   for (const key of _cache.keys()) {
+ 177 |     if (key.startsWith(prefix)) _cache.delete(key);
+ 178 |   }
 ```
 
 ```ts
-  46 |
-  47 | export function normalizePaperclipUrl(input: string): string {
-  48 |   const trimmed = input.trim();
-  49 |   if (!trimmed) return DEFAULT_PAPERCLIP_URL;
-  50 |   const withProtocol = /^[a-z]+:\/\//i.test(trimmed)
-  51 |     ? trimmed
-  52 |     : `http://${trimmed}`;
-  53 |   try {
-  54 |     const parsed = new URL(withProtocol);
-  55 |     if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-  56 |       return DEFAULT_PAPERCLIP_URL;
-  57 |     }
-  58 |     return withProtocol.replace(/\/+$/, "");
-  59 |   } catch {
-  60 |     return DEFAULT_PAPERCLIP_URL;
-  61 |   }
-  62 | }
+  46 |   return join(HERMES_HOME, "desktop.json");
+  47 | }
+  48 |
+  49 | export function getPaperclipNpmCacheDir(): string {
+  50 |   return join(HERMES_HOME, "paperclip-npm-cache");
+  51 | }
+  52 |
+  53 | function paperclipLogFile(): string {
+  54 |   return join(HERMES_HOME, "paperclip.log");
+  55 | }
+  56 |
+  57 | function ensurePaperclipRuntimeDirs(): void {
+  58 |   mkdirSync(getPaperclipNpmCacheDir(), { recursive: true });
+  59 | }
+  60 |
+  61 | function appendPaperclipLog(chunk: Buffer | string): void {
+  62 |   try {
 ```
 
 ## Local Model Launch Restrictions
 
-The `llama-server` launcher rejects non-GGUF files and rejects paths outside discovered local model folders. The renderer also refuses to select local-file models marked `available: false`, so a stale model path from an unmounted drive cannot silently become the active chat target.
+The `llama-server` launcher rejects non-GGUF files and rejects paths outside discovered local model folders.
 
 ```ts
-  31 |   launcherPath: string | null;
-  32 |   modelPath: string | null;
-  33 |   baseUrl: string;
-  34 |   pid: number | null;
-  35 |   error?: string;
-  36 | }
-  37 |
-  38 | export function isLaunchableLocalModel(modelPath: string): boolean {
-  39 |   return extname(modelPath).toLowerCase() === ".gguf";
-  40 | }
-  41 |
-  42 | export function isDiscoveredLocalModelPath(
-  43 |   modelPath: string,
-  44 |   files: Pick<LocalModelFile, "path" | "format">[] = discoverLocalModelFiles(),
-  45 | ): boolean {
-  46 |   return files.some(
-  47 |     (file) => file.path === modelPath && file.format === "gguf",
-  48 |   );
-  49 | }
-  50 |
-  51 | export function buildLlamaServerArgs(
-  52 |   modelPath: string,
-  53 |   port = LOCAL_MODEL_SERVER_PORT,
-  54 | ): string[] {
-  55 |   return [
-  56 |     "--model",
-  57 |     modelPath,
-  58 |     "--host",
+  31 | const LOG_FILE = join(HERMES_HOME, "local-model-server.log");
+  32 | const LLAMA_LOG_FILE = join(HERMES_HOME, "local-model-server-llama.log");
+  33 | const LLAMA_SERVER_CANDIDATES = [
+  34 |   "/opt/homebrew/bin/llama-server",
+  35 |   "/usr/local/bin/llama-server",
+  36 | ];
+  37 | const LOCAL_MODEL_SERVER_MAX_PORT = 8099;
+  38 | const SERVER_START_TIMEOUT_MS = 300_000;
+  39 | const SERVER_START_POLL_MS = 500;
+  40 |
+  41 | let localModelProcess: ChildProcess | null = null;
+  42 |
+  43 | function logLocalModelServer(message: string): void {
+  44 |   try {
+  45 |     appendFileSync(
+  46 |       LOG_FILE,
+  47 |       `[${new Date().toISOString()}] ${message}\n`,
+  48 |       "utf-8",
+  49 |     );
+  50 |   } catch {
+  51 |     /* best effort */
+  52 |   }
+  53 | }
+  54 |
+  55 | export function localModelServerEnv(
+  56 |   sourceEnv: NodeJS.ProcessEnv = process.env,
+  57 | ): NodeJS.ProcessEnv {
+  58 |   const env: NodeJS.ProcessEnv = {
 ```
 
 ## Current Security Trade-Offs
