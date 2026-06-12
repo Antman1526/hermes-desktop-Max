@@ -330,14 +330,16 @@ Paperclip tests validate URL normalization and sidecar behavior:
  131 |     });
  132 |     servers.push(server);
  133 |
- 134 |     await new Promise<void>((resolve) => server.listen(0, resolve));
- 135 |     const { port } = server.address() as AddressInfo;
- 136 |
- 137 |     await expect(requestHealth(`http://127.0.0.1:${port}`)).resolves.toBe(true);
- 138 |     expect(requestedPaths).toEqual(["/api/health"]);
- 139 |   });
- 140 | });
- 141 |
+ 134 |     await new Promise<void>((resolve) =>
+ 135 |       server.listen(0, "127.0.0.1", resolve),
+ 136 |     );
+ 137 |     const { port } = server.address() as AddressInfo;
+ 138 |
+ 139 |     await expect(requestHealth(`http://127.0.0.1:${port}`)).resolves.toBe(true);
+ 140 |     expect(requestedPaths).toEqual(["/api/health"]);
+ 141 |   });
+ 142 | });
+ 143 |
 ```
 
 Security tests validate allowed URLs and webview hardening:
